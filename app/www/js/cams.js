@@ -141,6 +141,7 @@
           <li>Make an API key at the <a data-open href="https://developer-api-console.wyze.com/">Wyze developer console</a> (sign in with your Wyze account). You get a <b>Key ID</b> and an <b>API key</b>.</li>
           <li>Type them below with your Wyze email and password.</li>
         </ol>
+        <p class="note"><b>Sign in to Wyze with Google?</b> Your account has no Wyze password yet. In the Wyze app, tap <b>Forgot password</b> on the sign-in screen and enter your Google email to set one; Google sign-in keeps working. If that doesn't work, make a second Wyze account with a password and share your cameras to it (camera → Settings → Device sharing).</p>
         <label class="fld">Wyze email<input class="field" id="wyEmail" type="email" autocomplete="username"></label>
         <label class="fld">Wyze password<input class="field" id="wyPass" type="password" autocomplete="current-password"></label>
         <label class="fld">Key ID<input class="field" id="wyKeyId" autocomplete="off"></label>

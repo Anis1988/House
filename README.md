@@ -22,7 +22,7 @@ Any side can be hidden in Settings → Devices in the app. Logins and keys stay 
 - **LG TV:** power (on via Wake-on-LAN), arrows/OK, back/home, volume and channel, mute, play/pause, apps and inputs.
 - **Samsung screen:** arrows/OK, back/home/source, volume, mute, standby.
 - **Nest:** thermostat dial (set temperature, Heat/Cool/Heat·Cool/Off, Eco, humidity), °C/°F. Doorbell is listed; live view and ring alerts are planned.
-- **Wyze:** latest snapshot per camera, online state, on/off.
+- **Wyze:** latest snapshot per camera, online state, on/off. Google-login accounts need a Wyze password first (Forgot password in the Wyze app).
 - **Wi-Fi:** every device on the network, grouped and named where possible (LIFX, TV, screen, cameras, Apple, Cast, Tuya…); tap one to give it your own name.
 
 ## Planned next
