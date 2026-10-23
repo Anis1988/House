@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="app_bg">#05060B</color>
+    <bool name="light_bars">false</bool>
+
+    <color name="w_bg_top">#C21A1F35</color>
+    <color name="w_bg_bottom">#C20B0D18</color>
+    <color name="w_edge">#33FFFFFF</color>
+    <color name="w_shine">#1FFFFFFF</color>
+    <color name="w_fg">#FFFFFFFF</color>
+    <color name="w_fg_muted">#B3E6F0FF</color>
+    <color name="w_btn_edge">#26FFFFFF</color>
+    <color name="w_pill">#14FFFFFF</color>
+    <color name="w_on">#FFFFC65A</color>
+    <color name="w_on_bg">#33FFB547</color>
+</resources>

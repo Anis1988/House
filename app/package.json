@@ -1,0 +1,22 @@
+{
+  "name": "house",
+  "version": "1.0.0",
+  "description": "Android app for the smart-home devices",
+  "private": true,
+  "scripts": {
+    "copy-core": "node -e \"require('fs').copyFileSync('node_modules/@capacitor/core/dist/capacitor.js','www/capacitor.js')\"",
+    "sync": "npm run copy-core && cap sync android",
+    "build": "npm run sync && cd android && gradlew assembleDebug"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  }
+}

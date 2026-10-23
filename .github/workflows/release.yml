@@ -1,0 +1,78 @@
+# Builds the Android app and publishes it as a GitHub Release.
+# Every push to main that changes the app releases the next version (v1.12.0 -> v1.13.0).
+# Pushing a tag like v2.0.0 still works to pick a version by hand.
+name: Release Android app
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths: ["app/**", ".github/workflows/release.yml"]
+  workflow_dispatch:
+
+# One release at a time, so two quick pushes don't pick the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pick version
+        id: ver
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then v="$GITHUB_REF_NAME"
+          else
+            last=$(git tag -l 'v*' --sort=-v:refname | head -1)
+            IFS=. read -r major minor _ <<< "${last#v}"
+            v="v${major:-1}.$(( ${minor:-0} + 1 )).0"
+          fi
+          echo "name=$v" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install and sync web files
+        run: |
+          npm ci
+          npm run sync
+
+      - name: Build APK
+        working-directory: app/android
+        env:
+          VERSION_NAME: ${{ steps.ver.outputs.name }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/House-${VERSION_NAME}.apk"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          files: House-*.apk
+          body: |
+            Download **House-${{ steps.ver.outputs.name }}.apk** below and open it on your Android phone.
+            First time: allow installs from your browser/Files app when Android asks.
+            In the app: tap Find lights. Your phone must be on the home Wi-Fi.

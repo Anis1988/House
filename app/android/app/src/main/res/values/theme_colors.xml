@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Light theme colors; dark versions live in values-night -->
+<resources>
+    <color name="app_bg">#EAEEF7</color>
+    <bool name="light_bars">true</bool>
+    <!-- Fixed values for code that picks the theme at runtime -->
+    <color name="app_bg_light">#EAEEF7</color>
+    <color name="app_bg_dark">#05060B</color>
+
+    <color name="w_bg_top">#E6FFFFFF</color>
+    <color name="w_bg_bottom">#D9EEF1FA</color>
+    <color name="w_edge">#1F141C3C</color>
+    <color name="w_shine">#80FFFFFF</color>
+    <color name="w_fg">#FF1C2238</color>
+    <color name="w_fg_muted">#FF535C74</color>
+    <color name="w_btn_edge">#1A141C3C</color>
+    <color name="w_pill">#99FFFFFF</color>
+    <color name="w_on">#FFC77800</color>
+    <color name="w_on_bg">#26FFB547</color>
+</resources>
