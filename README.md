@@ -1,36 +1,41 @@
 # House
 
-One Android app for the smart-home devices.
+One Android app for the smart-home devices. Each device has its own side: pick it from the switch at the top and you get its own colours, bottom tabs, Settings and Guide (the ? button), like separate apps.
 
 **Install:** open the [latest release](https://github.com/Anis1988/House/releases/latest) on the phone and tap the `.apk`.
 Every push to `main` builds and publishes the next version, and the app shows an "Update available" banner.
 
-## Now: lights (LIFX)
+## Devices
 
-- Finds the LIFX bulbs on the home Wi-Fi (LAN protocol, UDP 56700). No LIFX account needed.
-- Rooms and names come from the LIFX app.
-- Per bulb: on/off, brightness, plus warm–cool and color on bulbs that support them.
-- All lights: one switch and one brightness slider. Each room has its own on/off.
-- Scenes: Bright, Movie, Night light, All off.
-- Bedtime: all lights off every day at a set time.
-- Home-screen widget: All on / All off.
-- Light, dark, or auto theme.
+| Side | How it talks | Tabs |
+|---|---|---|
+| 💡 Lights (8 LIFX) | Home Wi-Fi, no account | Lights · Scenes · Timers · Settings |
+| 📺 LG TV (OLED65C3) | Home Wi-Fi; accept once on the TV | Remote · Apps · Settings |
+| 🖥️ Samsung screen (Odyssey G7) | Home Wi-Fi; Allow once on the screen | Remote · Settings |
+| 🌡️ Nest thermostat + doorbell | Google Device Access (your own project, $5 once) | Thermostat · Doorbell · Settings |
+| 📷 Wyze cameras | Wyze cloud; your login + free API key | Cameras · Settings |
+| 📶 Wi-Fi | Finds devices itself; optional ASUS router sign-in for the full list | Devices · Settings |
 
-If no lights show up, use Settings → scan every address (some routers block broadcasts).
+Any side can be hidden in Settings → Devices in the app. Logins and keys stay on the phone.
+
+- **Lights:** per bulb on/off and brightness (colour and warm–cool on bulbs that have them), rooms from the LIFX app, All lights switch and brightness, scenes (Bright, Movie, Night light, All off), daily Bedtime all-off, home-screen widget.
+- **LG TV:** power (on via Wake-on-LAN), arrows/OK, back/home, volume and channel, mute, play/pause, apps and inputs.
+- **Samsung screen:** arrows/OK, back/home/source, volume, mute, standby.
+- **Nest:** thermostat dial (set temperature, Heat/Cool/Heat·Cool/Off, Eco, humidity), °C/°F. Doorbell is listed; live view and ring alerts are planned.
+- **Wyze:** latest snapshot per camera, online state, on/off.
+- **Wi-Fi:** every device on the network, grouped and named where possible (LIFX, TV, screen, cameras, Apple, Cast, Tuya…); tap one to give it your own name.
 
 ## Planned next
 
-- Nest thermostat and doorbell (Google Device Access: $5 sign-up, OAuth)
-- Samsung microwave status (SmartThings token)
+- Nest doorbell live view and ring alerts (needs Google Pub/Sub)
 - Tesla Model 3 (Fleet API)
-- Wyze cameras (unofficial API)
-- Router device list (only if you type the router password into the app yourself)
+- Samsung microwave (SmartThings)
 
-Not possible: MyQ garage (Chamberlain blocks other apps), Echo Show (no API).
+Not possible: MyQ garage (Chamberlain blocks other apps), Echo (no API).
 
 ## Build
 
-`app/` is a Capacitor 8 app: web UI in `app/www`, LIFX networking in Java (`app/android/app/src/main/java/com/claude/house`).
+`app/` is a Capacitor 8 app: web UI in `app/www` (`js/core.js` is the shell, one file per device side), native code in `app/android/app/src/main/java/com/claude/house` (`Lifx` for bulbs, `NetPlugin` for TV sockets, LAN sweep, SSDP/mDNS, Wake-on-LAN). Cloud calls use Capacitor's native HTTP.
 
 ```
 cd app

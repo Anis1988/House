@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(LightsPlugin.class);
+        registerPlugin(NetPlugin.class);
         super.onCreate(savedInstanceState);
         applySystemBars();
 

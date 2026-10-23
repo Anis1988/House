@@ -144,11 +144,23 @@ public class LightsPlugin extends Plugin {
         call.resolve(r);
     }
 
-    /** Opens a release download in the browser; only this app's own GitHub links. */
+    // Release downloads, and the sign-up / sign-in pages the device setups send you to.
+    private static final String[] OPEN_OK = {
+        "https://github.com/Anis1988/House/",
+        "https://nestservices.google.com/",
+        "https://console.nest.google.com/",
+        "https://console.cloud.google.com/",
+        "https://developers.google.com/nest/",
+        "https://developer-api-console.wyze.com/",
+    };
+
+    /** Opens a link in the browser; only the links above. */
     @PluginMethod
     public void openUrl(PluginCall call) {
         String url = call.getString("url", "");
-        if (!url.startsWith("https://github.com/Anis1988/House/")) {
+        boolean ok = false;
+        for (String prefix : OPEN_OK) ok |= url.startsWith(prefix);
+        if (!ok) {
             call.reject("Link not allowed");
             return;
         }

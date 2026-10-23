@@ -5,5 +5,10 @@
   "backgroundColor": "#05060b",
   "android": {
     "backgroundColor": "#05060b"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
   }
 }
