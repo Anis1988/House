@@ -123,6 +123,7 @@
         id: e.event_id, mac: e.device_mac, at: +e.event_ts,
         what: (e.tag_list || []).map((t) => TAGS[t]).filter(Boolean)[0] || KIND[+e.event_value] || "Event",
         img: (e.file_list || []).find((f) => +f.type === 1)?.url || "",
+        video: (e.file_list || []).find((f) => +f.type === 2)?.url || "",
       })).sort((a, b) => b.at - a.at);
       if (manual) toast(events.length ? `${events.length} events in the last two days` : "No events in the last two days");
     } catch (e) { toast(e.message, true); }
@@ -138,8 +139,100 @@
     box.innerHTML = events.map((e, i) => `
       <button class="event glass" data-ev="${i}">
         <span class="th">${e.img ? `<img alt="" loading="lazy" src="${esc(e.img)}">` : svg("cam")}</span>
-        <span class="t"><b>${esc(e.what)} · ${esc(name(e.mac))}</b><span>${new Date(e.at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })} · ${ago(e.at)}</span></span>
+        <span class="t"><b>${esc(e.what)} · ${esc(name(e.mac))}${e.video ? " ▶" : ""}</b><span>${new Date(e.at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })} · ${ago(e.at)}</span></span>
       </button>`).join("");
+  }
+
+  /* One camera, full screen: its latest picture, Refresh, and Live view (beta). */
+  function openCam(mac) {
+    const c = cams.find((x) => x.mac === mac);
+    if (!c) return;
+    buzz(6);
+    const body = House.sheet(`<h3>${esc(c.name)}</h3><div class="sub" id="camSub">${!c.online ? "Offline" : c.on ? "Latest picture" : "Camera is off"}${c.thumbAt ? ` · ${ago(c.thumbAt)}` : ""}</div>
+      <div class="live-box" id="camBox">${c.thumb ? `<img id="camImg" alt="" src="${esc(c.thumb)}">` : `<div class="live-wait">No picture yet</div>`}</div>
+      <div class="grid2" style="margin-top:12px;margin-bottom:0">
+        <button class="ghost center" id="camRefresh">${svg("refresh")} Refresh</button>
+        <button class="primary" id="camLive" ${c.online && c.on ? "" : "disabled"}>${svg("play", 'style="width:18px;height:18px;vertical-align:-4px"')} Live (beta)</button>
+      </div>
+      <p class="note" id="camNote">Refresh shows the newest picture Wyze has. Live uses the same stream as the Wyze Web Portal.</p>`);
+    House.onSheetClose = stopCamLive;
+    body.querySelector("#camRefresh").onclick = async () => {
+      buzz();
+      stopCamLive();
+      await load();
+      const n = cams.find((x) => x.mac === mac);
+      if (!n || !$("camBox")) return;
+      $("camBox").innerHTML = n.thumb ? `<img id="camImg" alt="" src="${esc(n.thumb)}${n.thumb.includes("?") ? "&" : "?"}t=${Date.now()}">` : `<div class="live-wait">No picture yet</div>`;
+      $("camSub").textContent = `Latest picture${n.thumbAt ? ` · ${ago(n.thumbAt)}` : ""}`;
+    };
+    body.querySelector("#camLive").onclick = () => startCamLive(c);
+  }
+
+  /*
+   * Live view (beta): Wyze streams through Amazon Kinesis Video WebRTC. Wyze's API hands out a
+   * signed signalling address for a camera (what the Wyze Web Portal uses); the phone then talks
+   * WebRTC with the camera directly. Not documented by Wyze, so it may stop working.
+   */
+  let camLive = null; // { pc, ws }
+  async function startCamLive(c) {
+    buzz();
+    stopCamLive();
+    $("camBox").innerHTML = `<video id="camVideo" autoplay playsinline muted></video><div class="live-wait" id="camWait">Connecting to the camera…</div>`;
+    $("camSub").textContent = "Connecting…";
+    $("camLive").outerHTML = `<button class="ghost center" id="camSound">${svg("vol")} Sound on</button>`;
+    $("camSound").onclick = (e) => {
+      const v = $("camVideo");
+      if (!v) return;
+      v.muted = !v.muted;
+      e.currentTarget.innerHTML = `${svg(v.muted ? "vol" : "mute")} ${v.muted ? "Sound on" : "Sound off"}`;
+    };
+    const fail = (msg) => {
+      if ($("camWait")) { $("camWait").textContent = msg; $("camWait").hidden = false; }
+      if ($("camSub")) $("camSub").textContent = "Not connected";
+      stopCamLive();
+    };
+    try {
+      const get = () => fetch(`https://webrtc.api.wyze.com/signaling/device/${encodeURIComponent(c.mac)}?use_trickle=true`, {
+        headers: { authorization: acct.access, "content-type": "application/json", "User-Agent": `wyze_android_${APP_VER}` },
+      }).then((r) => r.json());
+      let j = await get();
+      if (String(j.code) === "2001" && acct.refresh) { await call("/v2/home_page/get_object_list"); j = await get(); } // refreshes the token
+      const res = j.results || j.data || {};
+      if (!res.signalingUrl) return fail(j.msg || j.message || "Wyze didn't offer a live stream for this camera. Check it plays in the Wyze Web Portal.");
+      const servers = (res.servers || []).map((x) => ({ urls: x.urls || x.url, username: x.username, credential: x.credential }));
+      const pc = new RTCPeerConnection({ iceServers: servers });
+      const ws = new WebSocket(decodeURIComponent(res.signalingUrl));
+      camLive = { pc, ws };
+      pc.addTransceiver("video", { direction: "recvonly" });
+      pc.addTransceiver("audio", { direction: "recvonly" });
+      const stream = new MediaStream();
+      pc.ontrack = (e) => { stream.addTrack(e.track); const v = $("camVideo"); if (v && v.srcObject !== stream) v.srcObject = stream; };
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "connected") { if ($("camWait")) $("camWait").hidden = true; if ($("camSub")) $("camSub").textContent = "Live"; }
+        if (pc.connectionState === "failed") fail("The stream stopped. Close and try again.");
+      };
+      const b64 = (o) => btoa(JSON.stringify(o));
+      pc.onicecandidate = (e) => { if (e.candidate && ws.readyState === 1) ws.send(JSON.stringify({ action: "ICE_CANDIDATE", messagePayload: b64(e.candidate.toJSON()) })); };
+      ws.onmessage = async (m) => {
+        let msg; try { msg = JSON.parse(m.data); } catch { return; }
+        if (!msg.messagePayload) return;
+        const payload = JSON.parse(atob(msg.messagePayload));
+        if (msg.messageType === "SDP_ANSWER") await pc.setRemoteDescription(payload);
+        else if (msg.messageType === "ICE_CANDIDATE") await pc.addIceCandidate(payload).catch(() => {});
+      };
+      ws.onerror = () => fail("Couldn't reach Wyze's live stream.");
+      ws.onopen = async () => {
+        await pc.setLocalDescription(await pc.createOffer());
+        ws.send(JSON.stringify({ action: "SDP_OFFER", messagePayload: b64({ type: "offer", sdp: pc.localDescription.sdp }) }));
+      };
+      setTimeout(() => { if (camLive?.pc === pc && pc.connectionState !== "connected") fail("No video from the camera. Check it plays in the Wyze Web Portal (it may need Cam Plus)."); }, 25000);
+    } catch (e) { fail(e.message || "Couldn't start the live view"); }
+  }
+  function stopCamLive() {
+    if (!camLive) return;
+    try { camLive.ws.close(); } catch {}
+    try { camLive.pc.close(); } catch {}
+    camLive = null;
   }
 
   const ago = (ts) => { if (!ts) return ""; const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
@@ -152,9 +245,10 @@
     } else {
       box.innerHTML = cams.map((c) => `
         <div class="cam glass">
-          <div class="shot ${c.on && c.online ? "" : "off"}">
+          <div class="shot ${c.on && c.online ? "" : "off"}" data-open-cam="${esc(c.mac)}" role="button" aria-label="Open ${esc(c.name)}">
             ${c.thumb ? `<img alt="" src="${esc(c.thumb)}" loading="lazy">` : svg("cam", 'style="width:44px;height:44px"')}
             <span class="badge"><span class="dot ${c.online ? (c.on ? "on" : "") : "bad"}"></span>${!c.online ? "Offline" : c.on ? "On" : "Off"}${c.thumbAt ? ` · ${ago(c.thumbAt)}` : ""}</span>
+            ${c.online && c.on ? `<span class="live-chip">${svg("play")} Live</span>` : ""}
           </div>
           <div class="bar"><div class="grow"><b>${esc(c.name)}</b><span class="muted small">${esc(c.model)}${c.ip ? ` · ${esc(c.ip)}` : ""}</span></div>
             <button class="tgl${c.on ? " on" : ""}" data-cam="${esc(c.mac)}" aria-label="${esc(c.name)} on or off" ${c.online ? "" : "disabled"}><i></i></button></div>
@@ -208,9 +302,14 @@
         if (!b) return;
         const ev = events[+b.dataset.ev];
         const cam = cams.find((c) => c.mac === ev.mac);
-        House.sheet(`<h3>${esc(ev.what)}</h3><div class="sub">${esc(cam?.name || ev.mac)} · ${new Date(ev.at).toLocaleString()}</div>${ev.img ? `<img class="shot-full" alt="" src="${esc(ev.img)}">` : `<p class="note">No snapshot for this event.</p>`}`);
+        House.sheet(`<h3>${esc(ev.what)}</h3><div class="sub">${esc(cam?.name || ev.mac)} · ${new Date(ev.at).toLocaleString()}</div>${ev.video ? `<video class="shot-full" controls autoplay playsinline ${ev.img ? `poster="${esc(ev.img)}"` : ""} src="${esc(ev.video)}"></video>` : ev.img ? `<img class="shot-full" alt="" src="${esc(ev.img)}"><p class="note">Wyze didn't keep a video clip for this event (clips need Cam Plus or a recording).</p>` : `<p class="note">No picture or clip for this event.</p>`}`);
       });
-      $("wyCams").addEventListener("click", (e) => { const t = e.target.closest("[data-cam]"); if (t) { const c = cams.find((x) => x.mac === t.dataset.cam); power(c, !c.on); } });
+      $("wyCams").addEventListener("click", (e) => {
+        const t = e.target.closest("[data-cam]");
+        if (t) { const c = cams.find((x) => x.mac === t.dataset.cam); power(c, !c.on); return; }
+        const o = e.target.closest("[data-open-cam]");
+        if (o) openCam(o.dataset.openCam);
+      });
       $("wySignIn").onclick = signIn;
       $("wyOut").onclick = () => { if (!confirm("Sign out of Wyze on this phone?")) return; acct = null; cams = []; store.set("wyze.acct", null); paint(); };
       paint();
