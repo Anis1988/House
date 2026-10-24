@@ -461,6 +461,66 @@ final class Lifx {
         }
     }
 
+    /** Built-in scene with its own fade (ms) instead of the default one; used by scene timers. */
+    static void scene(Context ctx, String name, int fadeMs) {
+        if (fadeMs <= 0) { scene(ctx, name); return; }
+        switch (name) {
+            case "off": setPower(ctx, null, false, fadeMs); return;
+            case "on": setPower(ctx, null, true, fadeMs); return;
+            case "movie": fadeTo(ctx, pct(12), 2200, fadeMs); return;
+            case "night": fadeTo(ctx, pct(3), 1500, fadeMs); return;
+            case "bright": fadeTo(ctx, pct(100), 4000, fadeMs); return;
+            default: Log.w(TAG, "Unknown scene " + name);
+        }
+    }
+
+    // Bulbs that are off get their colour at once (invisible) and then fade up as they turn on;
+    // bulbs already on fade to the new colour.
+    private static void fadeTo(Context ctx, int bri, int kelvin, int fadeMs) {
+        Map<String, Light> lights = cached(ctx);
+        List<String> wereOff = new ArrayList<>(), wereOn = new ArrayList<>();
+        for (Light l : lights.values()) (l.on ? wereOn : wereOff).add(l.id);
+        if (!wereOff.isEmpty()) setColor(ctx, wereOff, 0, 0, bri, kelvin, 0);
+        if (!wereOn.isEmpty()) setColor(ctx, wereOn, 0, 0, bri, kelvin, fadeMs);
+        setPower(ctx, null, true, fadeMs);
+    }
+
+    /**
+     * Runs one of your own scenes: { lights: { <bulb id>: { mode: "on"|"off", bri: 1-100,
+     * kelvin?, hue?: 0-360, sat?: 0-100 } } }. Bulbs not listed are left as they are.
+     */
+    static void runCustom(Context ctx, JSONObject scene, int fadeMs) {
+        JSONObject wanted = scene.optJSONObject("lights");
+        if (wanted == null) return;
+        int dur = fadeMs > 0 ? fadeMs : 800;
+        Map<String, Light> lights = cached(ctx);
+        List<Cmd> colors = new ArrayList<>(), ons = new ArrayList<>(), offs = new ArrayList<>();
+        for (Light l : lights.values()) {
+            JSONObject s = wanted.optJSONObject(l.id);
+            if (s == null) continue;
+            if ("off".equals(s.optString("mode"))) {
+                l.on = false;
+                offs.add(new Cmd(l, SET_LIGHT_POWER, powerPayload(false, dur)));
+                continue;
+            }
+            if (s.has("bri")) l.bri = pct(Math.max(1, Math.min(100, s.optInt("bri"))));
+            if (l.color() && s.has("hue") && s.optInt("sat", 0) > 0) {
+                l.hue = Math.round(((s.optInt("hue") % 360 + 360) % 360) / 360f * 65535);
+                l.sat = pct(Math.min(100, s.optInt("sat")));
+            } else if (s.optInt("kelvin", 0) > 0 && l.tunable()) {
+                l.kelvin = Math.max(l.kMin(), Math.min(l.kMax(), s.optInt("kelvin")));
+                l.sat = 0;
+            }
+            colors.add(new Cmd(l, SET_COLOR, colorPayload(l.hue, l.sat, l.bri, l.kelvin, l.on ? dur : 0)));
+            ons.add(new Cmd(l, SET_LIGHT_POWER, powerPayload(true, dur)));
+            l.on = true;
+        }
+        save(ctx, lights);
+        if (!colors.isEmpty()) sendAll(ctx, colors, false, 0, null);
+        if (!ons.isEmpty()) sendAll(ctx, ons, false, 0, null);
+        if (!offs.isEmpty()) sendAll(ctx, offs, false, 0, null);
+    }
+
     static int pct(int percent) {
         return Math.round(percent / 100f * 65535);
     }

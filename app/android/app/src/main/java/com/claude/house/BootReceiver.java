@@ -11,5 +11,6 @@ public class BootReceiver extends BroadcastReceiver {
         String a = intent.getAction();
         if (!Intent.ACTION_BOOT_COMPLETED.equals(a) && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)) return;
         Bedtime.schedule(ctx);
+        SceneTimers.schedule(ctx);
     }
 }

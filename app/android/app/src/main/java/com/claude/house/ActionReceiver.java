@@ -6,15 +6,27 @@ import android.content.Intent;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Runs the bedtime alarm in the background, with the app closed. */
+/** Runs the bedtime alarm and scene timers in the background, with the app closed. */
 public class ActionReceiver extends BroadcastReceiver {
-    // One worker so widget taps and the alarm run in order.
+    // One worker so widget taps and the alarms run in order.
     static final ExecutorService worker = Executors.newSingleThreadExecutor();
 
     @Override
     public void onReceive(Context ctx, Intent intent) {
-        if (!Bedtime.ACTION.equals(intent.getAction())) return;
         Context app = ctx.getApplicationContext();
+        if (SceneTimers.ACTION.equals(intent.getAction())) {
+            PendingResult result = goAsync();
+            worker.execute(() -> {
+                try {
+                    SceneTimers.fire(app);
+                    LightsWidget.redraw(app);
+                } finally {
+                    result.finish();
+                }
+            });
+            return;
+        }
+        if (!Bedtime.ACTION.equals(intent.getAction())) return;
         PendingResult result = goAsync();
         worker.execute(() -> {
             try {

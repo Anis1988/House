@@ -18,7 +18,7 @@ Every push to `main` builds and publishes the next version, and the app shows an
 
 Any side can be hidden in Settings → Devices in the app. Logins and keys stay on the phone.
 
-- **Lights:** per bulb on/off and brightness (colour and warm–cool on bulbs that have them), rooms from the LIFX app, All lights switch and brightness, scenes (Bright, Movie, Night light, All off), daily Bedtime all-off, home-screen widget.
+- **Lights:** per bulb on/off and brightness (colour and warm–cool on bulbs that have them), rooms from the LIFX app, All lights switch and brightness, scenes (Bright, Movie, Night light, All off), your own scenes (each light On with a brightness, Off, or left as is; edit or delete any time), scene timers (any scene at a time on chosen days, with an optional slow fade), daily Bedtime all-off, home-screen widget.
 - **LG TV:** power (on via Wake-on-LAN), arrows/OK, back/home, volume and channel, mute, play/pause, apps and inputs.
 - **Samsung screen:** arrows/OK, back/home/source, volume, mute, standby.
 - **Nest:** thermostat dial (set temperature, Heat/Cool/Heat·Cool/Off, Eco, humidity), °C/°F. Doorbell is listed; live view and ring alerts are planned.

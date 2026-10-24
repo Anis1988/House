@@ -26,6 +26,61 @@ public class LightsPlugin extends Plugin {
     @Override
     public void load() {
         Bedtime.schedule(getContext());
+        SceneTimers.schedule(getContext());
+    }
+
+    // ---- Your own scenes and scene timers ----
+
+    @PluginMethod
+    public void getScenes(PluginCall call) {
+        try {
+            JSObject r = new JSObject();
+            r.put("scenes", new JSArray(SceneTimers.scenes(getContext()).toString()));
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** { scenes: [...] } replaces the whole list. */
+    @PluginMethod
+    public void setScenes(PluginCall call) {
+        SceneTimers.saveScenes(getContext(), call.getArray("scenes", new JSArray()));
+        call.resolve();
+    }
+
+    /** { scene: {...} } runs one of your scenes (saved or not, for "Try it"); { fade: seconds }. */
+    @PluginMethod
+    public void runScene(PluginCall call) {
+        JSObject scene = call.getObject("scene");
+        int fade = call.getInt("fade", 0);
+        if (scene == null) {
+            call.reject("No scene");
+            return;
+        }
+        commands.execute(() -> {
+            Lifx.runCustom(getContext(), scene, fade * 1000);
+            done(call, 0);
+        });
+    }
+
+    @PluginMethod
+    public void getTimers(PluginCall call) {
+        try {
+            JSObject r = new JSObject();
+            r.put("timers", new JSArray(SceneTimers.timers(getContext()).toString()));
+            r.put("next", getContext().getSharedPreferences(Lifx.PREFS, 0).getLong("timerAt", 0));
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** { timers: [...] } replaces the whole list and arms the next alarm. */
+    @PluginMethod
+    public void setTimers(PluginCall call) {
+        SceneTimers.saveTimers(getContext(), call.getArray("timers", new JSArray()));
+        getTimers(call);
     }
 
     private JSObject lights(Map<String, Lifx.Light> lights) throws Exception {
