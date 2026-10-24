@@ -14,6 +14,19 @@ public class ActionReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context ctx, Intent intent) {
         Context app = ctx.getApplicationContext();
+        if (WifiLog.ACTION_NET_CHECK.equals(intent.getAction()) || VacationMode.ACTION.equals(intent.getAction())) {
+            boolean net = WifiLog.ACTION_NET_CHECK.equals(intent.getAction());
+            PendingResult result = goAsync();
+            new Thread(() -> {
+                try {
+                    if (net) WifiLog.checkInternet(app); else VacationMode.step(app);
+                } catch (Exception ignored) {
+                } finally {
+                    result.finish();
+                }
+            }).start();
+            return;
+        }
         if (NestWatch.ACTION_TICK.equals(intent.getAction()) || NestWatch.ACTION_RING.equals(intent.getAction())) {
             boolean ring = NestWatch.ACTION_RING.equals(intent.getAction());
             PendingResult result = goAsync();

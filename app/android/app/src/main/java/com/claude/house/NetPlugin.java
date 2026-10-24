@@ -464,6 +464,37 @@ public class NetPlugin extends Plugin {
         getWatch(call);
     }
 
+    // ---- Wi-Fi logs: device history and internet outages ----
+
+    @PluginMethod
+    public void getWifiLog(PluginCall call) {
+        try {
+            JSObject r = new JSObject();
+            r.put("devices", new JSArray(WifiLog.deviceLog(getContext()).toString()));
+            r.put("outages", new JSArray(WifiLog.outages(getContext()).toString()));
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void clearWifiLog(PluginCall call) {
+        WifiLog.clear(getContext());
+        getWifiLog(call);
+    }
+
+    /** Checks the internet now (and logs an outage if it's down). */
+    @PluginMethod
+    public void checkInternet(PluginCall call) {
+        pool.execute(() -> {
+            WifiLog.checkInternet(getContext());
+            JSObject r = new JSObject();
+            r.put("up", WifiLog.internetUp());
+            call.resolve(r);
+        });
+    }
+
     // ---- Nest in the background: history, humidity alert, doorbell alerts ----
 
     @PluginMethod

@@ -354,6 +354,29 @@
     all("[data-bed-sub]", (el) => (el.textContent = b.on ? `All lights off every day at ${fmtTime(b.minutes)}` : "Turn every light off at a set time"));
     bedOn = b.on;
   }
+  /* Vacation mode (native VacationMode does the work) */
+  let vac = { on: false, from: "sunset", until: 1410 };
+  const hhmm2 = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  const toMin = (v) => { const [h, m] = (v || "0:0").split(":").map(Number); return (h || 0) * 60 + (m || 0); };
+  function showVacation(v) {
+    vac = v;
+    const sunset = v.from === "sunset";
+    $("vacTgl").classList.toggle("on", !!v.on);
+    $("vacFromRow").classList.toggle("disabled", !v.on);
+    $("vacUntilRow").classList.toggle("disabled", !v.on);
+    $("vacFromKind").querySelectorAll("[data-from]").forEach((b) => b.classList.toggle("on", (b.dataset.from === "sunset") === sunset));
+    $("vacFrom").hidden = sunset;
+    if (!sunset) $("vacFrom").value = hhmm2(v.from);
+    $("vacUntil").value = hhmm2(v.until ?? 1410);
+    const start = sunset ? "sunset" : fmtTime(v.from);
+    $("vacSub").textContent = v.on ? `On: random lights from ${start} until ${fmtTime(v.until ?? 1410)}${v.next ? ` · next ${fmtNext(v.next)}` : ""}`
+      : "Lights go on and off at random in the evening, so the house looks lived-in";
+  }
+  async function saveVacation(changes, msg) {
+    try { showVacation(await Lights.setVacation({ ...vac, ...changes })); if (msg) toast(msg); }
+    catch { toast("Couldn't save vacation mode", true); }
+  }
+
   let bedOn = false;
   async function saveBedtime(on, value) {
     const [h, m] = (value || document.querySelector("[data-bed-time]").value).split(":").map(Number);
@@ -408,7 +431,23 @@
             <input class="field time-field" type="time" data-bed-time value="23:30">
           </div>
         </div>
-        <p class="note">Timers and Bedtime work with the app closed. If your phone restarts, they're set again on their own.</p>`;
+        <div class="label" style="margin-top:18px">While you're away</div>
+        <div class="card glass">
+          <div class="set-row">
+            <div class="set-text"><b>Vacation mode</b><span id="vacSub">Lights go on and off at random in the evening, so the house looks lived-in</span></div>
+            <button class="tgl" id="vacTgl" aria-label="Vacation mode"><i></i></button>
+          </div>
+          <div class="set-row" id="vacFromRow">
+            <div class="set-text"><b>From</b></div>
+            <div class="mini-seg" id="vacFromKind"><button data-from="sunset">Sunset</button><button data-from="time">Time</button></div>
+            <input class="field time-field" type="time" id="vacFrom" value="19:00">
+          </div>
+          <div class="set-row" id="vacUntilRow">
+            <div class="set-text"><b>Until</b><span>Then every light it turned on goes off</span></div>
+            <input class="field time-field" type="time" id="vacUntil" value="23:30">
+          </div>
+        </div>
+        <p class="note">Timers, Bedtime and Vacation mode work with the app closed. Away from home the lights go through the LIFX cloud token. If your phone restarts, they're set again on their own.</p>`;
 
 
   // Not a side of its own: the Lights side shows these (Scenes and Timers tabs, its Settings, its Guide).
@@ -464,6 +503,20 @@
         }
       });
       document.addEventListener("change", (e) => { if (e.target.matches("[data-bed-time]")) saveBedtime(true, e.target.value); });
+      $("vacTgl").onclick = () => {
+        buzz();
+        if (!vac.on && !store.get("lifx.token")) toast("Tip: add the LIFX cloud token in Lights → Settings so it works while you're away");
+        saveVacation({ on: !vac.on }, vac.on ? "Vacation mode off" : "Vacation mode on");
+      };
+      $("vacFromKind").onclick = (e) => {
+        const b = e.target.closest("[data-from]");
+        if (!b) return;
+        buzz(6);
+        saveVacation({ from: b.dataset.from === "sunset" ? "sunset" : toMin($("vacFrom").value || "19:00") });
+      };
+      $("vacFrom").onchange = (e) => saveVacation({ from: toMin(e.target.value) });
+      $("vacUntil").onchange = (e) => saveVacation({ until: toMin(e.target.value) });
+      Lights.getVacation().then(showVacation).catch(() => {});
       $("homeCityBtn").onclick = findCity;
       $("homeCity").onkeydown = (e) => { if (e.key === "Enter") findCity(); };
       const tokenNote = () => ($("lifxTokenNote").textContent = store.get("lifx.token") ? "Token saved on this phone. Away scenes use the LIFX cloud." : "");

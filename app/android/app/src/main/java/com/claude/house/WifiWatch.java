@@ -64,12 +64,13 @@ final class WifiWatch {
         prefs(ctx).edit().putString("watch", s.toString()).apply();
         schedule(ctx);
         Presence.register(ctx);
+        WifiLog.schedule(ctx);
     }
 
     private static boolean wanted(Context ctx) {
         JSONObject s = settings(ctx);
         JSONArray people = s.optJSONArray("people");
-        return s.optBoolean("alerts") || (people != null && people.length() > 0);
+        return s.optBoolean("alerts") || s.optBoolean("history") || (people != null && people.length() > 0);
     }
 
     private static PendingIntent intent(Context ctx) {
@@ -154,6 +155,7 @@ final class WifiWatch {
         if (now.isEmpty()) return;
         JSONObject s = settings(ctx);
         newDevices(ctx, s, now);
+        if (s.optBoolean("history")) WifiLog.devices(ctx, now);
         presence(ctx, s, now);
     }
 

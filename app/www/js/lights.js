@@ -18,6 +18,8 @@ const Lights = plugin("Lights", (() => {
     color: async ({ ids, bri }) => (pick(ids).forEach((l) => { if (bri != null) l.bri = bri / 100 * 65535; }), {}),
     scene: async ({ name }) => (L.forEach((l) => (l.on = name !== "off")), {}),
     getBedtime: async () => ({ on: false, minutes: 1410, next: 0 }), setBedtime: async (b) => ({ ...b, next: Date.now() + 3600e3 }),
+    getVacation: async () => store.json("mock.vac", { on: false, from: "sunset", until: 1410, next: 0 }),
+    setVacation: async (v) => (store.setJson("mock.vac", { ...v, next: v.on ? Date.now() + 3600e3 : 0 }), store.json("mock.vac")),
     getScenes: async () => ({ scenes: store.json("mock.scenes", null) || MOCK_BUILTINS }), setScenes: async ({ scenes }) => store.setJson("mock.scenes", scenes),
     restoreScenes: async () => { const s = store.json("mock.scenes", []); const out = [...MOCK_BUILTINS.filter((b) => !s.some((x) => x.id === b.id)), ...s]; store.setJson("mock.scenes", out); return { scenes: out }; },
     runScene: async () => ({ failed: [] }), setCreds: async () => {}, setLocation: async () => {},

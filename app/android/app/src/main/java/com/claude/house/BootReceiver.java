@@ -15,5 +15,7 @@ public class BootReceiver extends BroadcastReceiver {
         WifiWatch.schedule(ctx);
         Presence.register(ctx);
         NestWatch.schedule(ctx);
+        WifiLog.schedule(ctx);
+        VacationMode.schedule(ctx);
     }
 }

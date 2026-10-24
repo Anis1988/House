@@ -29,6 +29,8 @@ public class LightsPlugin extends Plugin {
         SceneTimers.schedule(getContext());
         Presence.register(getContext());
         NestWatch.schedule(getContext());
+        WifiLog.schedule(getContext());
+        VacationMode.schedule(getContext());
         // The app was opened: check home/away now instead of waiting for the next background check.
         new Thread(() -> Presence.evaluate(getContext())).start();
     }
@@ -102,6 +104,35 @@ public class LightsPlugin extends Plugin {
             NestWatch.schedule(getContext());
         }
         call.resolve();
+    }
+
+    // ---- Vacation mode ----
+
+    @PluginMethod
+    public void getVacation(PluginCall call) {
+        try {
+            JSObject r = new JSObject(VacationMode.settings(getContext()).toString());
+            r.put("next", VacationMode.next(getContext()));
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** { on, from: "sunset" | minutes, until: minutes } */
+    @PluginMethod
+    public void setVacation(PluginCall call) {
+        try {
+            org.json.JSONObject s = new org.json.JSONObject()
+                .put("on", Boolean.TRUE.equals(call.getBoolean("on", false)))
+                .put("until", call.getInt("until", 23 * 60 + 30));
+            Object from = call.getData().opt("from");
+            s.put("from", from instanceof Number ? ((Number) from).intValue() : (Object) "sunset");
+            VacationMode.save(getContext(), s);
+            getVacation(call);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
     }
 
     /** { lat, lon } for sunrise and sunset timers. */

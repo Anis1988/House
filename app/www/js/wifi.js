@@ -65,6 +65,61 @@
     routerTok = { base, token: j.asus_token };
     return routerTok;
   }
+  /* Pause a device: the ASUS router's parental controls ("block all internet" for a MAC).
+     Lists are kept by the router as ">"-separated values in a few settings. */
+  const MF = ["MULTIFILTER_ALL", "MULTIFILTER_ENABLE", "MULTIFILTER_MAC", "MULTIFILTER_DEVICENAME", "MULTIFILTER_MACFILTER_DAYTIME_V2"];
+  let paused = new Set(); // MACs the router is blocking right now
+  async function routerFilters() {
+    if (!routerTok) await routerLogin();
+    const hook = MF.map((k) => `nvram_get(${k})`).join(";");
+    const res = await fetch(`${routerTok.base}/appGet.cgi?hook=${encodeURIComponent(hook)}`, {
+      headers: { "User-Agent": UA, Cookie: `asus_token=${routerTok.token}`, Referer: `${routerTok.base}/index.asp` },
+    });
+    const j = await res.json();
+    const split = (k) => (j[k] ? String(j[k]).split(">") : []);
+    const macs = split("MULTIFILTER_MAC");
+    return { macs, names: split("MULTIFILTER_DEVICENAME"), enable: split("MULTIFILTER_ENABLE"), times: split("MULTIFILTER_MACFILTER_DAYTIME_V2") };
+  }
+  async function loadPaused() {
+    if (!router().pass) { paused = new Set(); return; }
+    try {
+      const f = await routerFilters();
+      paused = new Set(f.macs.filter((m, i) => f.enable[i] === "2").map((m) => m.toLowerCase()));
+    } catch { /* older firmware: leave as is */ }
+  }
+  async function setPaused(d, pause) {
+    const f = await routerFilters();
+    const i = f.macs.findIndex((m) => m.toLowerCase() === d.mac.toLowerCase());
+    if (i >= 0) f.enable[i] = pause ? "2" : "0";
+    else if (pause) {
+      f.macs.push(d.mac.toUpperCase());
+      f.names.push((d.label || "Device").replace(/[<>]/g, ""));
+      f.enable.push("2");
+      f.times.push("W03E21000700<W04122000800");
+    }
+    while (f.names.length < f.macs.length) f.names.push("Device");
+    while (f.times.length < f.macs.length) f.times.push("W03E21000700<W04122000800");
+    while (f.enable.length < f.macs.length) f.enable.push("0");
+    const body = new URLSearchParams({
+      action_mode: "apply", rc_service: "restart_firewall",
+      MULTIFILTER_ALL: "1",
+      MULTIFILTER_ENABLE: f.enable.join(">"),
+      MULTIFILTER_MAC: f.macs.join(">"),
+      MULTIFILTER_DEVICENAME: f.names.join(">"),
+      MULTIFILTER_MACFILTER_DAYTIME_V2: f.times.join(">"),
+    }).toString();
+    const res = await fetch(`${routerTok.base}/applyapp.cgi`, {
+      method: "POST",
+      headers: { "User-Agent": UA, Cookie: `asus_token=${routerTok.token}`, Referer: `${routerTok.base}/index.asp`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    if (!res.ok) throw new Error(`The router said no (${res.status})`);
+    // Read it back so the button shows what the router really did.
+    await new Promise((r) => setTimeout(r, 2500));
+    await loadPaused();
+    if (paused.has(d.mac.toLowerCase()) !== pause) throw new Error("The router didn't take the change. Your router's firmware may not support this.");
+  }
+
   async function routerClients() {
     if (!routerTok) await routerLogin();
     if (!routerTok) return null;
@@ -153,7 +208,7 @@
         <button class="dev glass${d.online ? "" : " off"}" data-dev="${esc(d.mac || d.ip)}">
           <span class="ic">${svg(d.kind)}</span>
           <span class="t"><b>${esc(d.label)}</b><span>${esc([d.ip, d.maker && d.maker !== d.label ? d.maker : d.hint].filter(Boolean).join(" · "))}</span></span>
-          <span class="r">${d.online ? esc(d.band || "") + (d.rssi ? `<br>${d.rssi} dBm` : "") : "offline"}</span>
+          <span class="r">${d.mac && paused.has(d.mac.toLowerCase()) ? `<b style="color:var(--bad)">paused</b><br>` : ""}${d.online ? esc(d.band || "") + (d.rssi ? `<br>${d.rssi} dBm` : "") : "offline"}</span>
         </button>`).join("")}</div>`;
     }).join("") || (busy ? "" : `<div class="card glass empty"><div class="big">${svg("wifi")}</div><b>No devices yet</b><p>Tap refresh. Signing in to your router (Settings) gives the full list with names.</p></div>`);
     const r = router();
@@ -162,6 +217,41 @@
     $("wfSigned").hidden = !r.pass;
     paintHome();
     paintWatch();
+    paintHistory();
+  }
+
+  /* ---- History: internet outages and devices coming and going ---- */
+  let log = { devices: [], outages: [] };
+  const dur = (ms) => { const m = Math.round(ms / 60000); return m < 60 ? `${Math.max(1, m)} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
+  const when = (t) => new Date(t).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+  function paintHistory() {
+    if (!$("wfNet")) return;
+    const s = watch.settings || {};
+    const out = log.outages.slice().reverse();
+    const open = out.find((o) => o.end == null);
+    const week = log.outages.filter((o) => (o.end ?? Date.now()) > Date.now() - 7 * 864e5);
+    const total = week.reduce((a, o) => a + ((o.end ?? Date.now()) - o.start), 0);
+    $("wfNet").innerHTML = !s.outages ? `<p class="note" style="margin:0">Turn on the internet outage log in Settings to keep track of outages.</p>`
+      : `<div class="head-card"><div class="grow"><b>${open ? "Internet is down" : "Internet is up"}</b><div class="status-line"><span class="dot ${open ? "bad" : "on"}"></span>${open ? `Down since ${when(open.start)}` : week.length ? `${week.length} outage${week.length === 1 ? "" : "s"} this week · ${dur(total)} in all` : "No outages this week"}</div></div><button class="round-btn glass" id="wfNetCheck" aria-label="Check now">${svg("refresh")}</button></div>`
+        + (out.length ? `<div style="margin-top:8px">${out.slice(0, 12).map((o) => `<div class="set-row"><div class="set-text"><b>${when(o.start)}</b><span>${o.end == null ? "Still down" : `${dur(o.end - o.start)}${o.unsure ? " (you left home during it)" : ""}`}</span></div></div>`).join("")}</div>` : "");
+    $("wfNetCheck")?.addEventListener("click", async (e) => {
+      buzz(6);
+      e.currentTarget.classList.add("spin");
+      try { const r = await Net.checkInternet(); toast(r.up ? "Internet is working" : "Internet isn't answering", !r.up); } catch {}
+      await loadLog();
+    });
+    const devs = log.devices.slice().reverse();
+    if (!s.history) { $("wfLog").innerHTML = `<div class="card glass"><p class="note" style="margin:0">Turn on device history in Settings to see devices coming and going.</p></div>`; return; }
+    if (!devs.length) { $("wfLog").innerHTML = `<div class="card glass"><p class="note" style="margin:0">Nothing yet. Devices are checked about every 15 minutes.</p></div>`; return; }
+    const own = names();
+    const byDay = {};
+    for (const e of devs.slice(0, 150)) (byDay[new Date(e.at).toDateString()] ||= []).push(e);
+    $("wfLog").innerHTML = Object.entries(byDay).map(([day, es]) => `<div class="slide-lbl" style="margin:10px 0 6px">${new Date(day).toDateString() === new Date().toDateString() ? "Today" : new Date(day).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</div>
+      <div class="card glass" style="padding:4px 14px">${es.map((e) => `<div class="set-row"><span class="dot ${e.event === "joined" ? "on" : ""}"></span><div class="set-text"><b>${esc(own[e.key] || own[e.ip] || e.name || e.ip || e.key)}</b><span>${e.event === "joined" ? "Joined" : "Left"} · ${new Date(e.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${e.ip ? ` · ${esc(e.ip)}` : ""}</span></div></div>`).join("")}</div>`).join("");
+  }
+  async function loadLog() {
+    try { log = await Net.getWifiLog(); } catch {}
+    paintHistory();
   }
 
   /* ---- Who's home ---- */
@@ -207,6 +297,8 @@
     $("wfAlerts").classList.toggle("on", !!s.alerts);
     $("wfNotifNote").hidden = !s.alerts || watch.notifications;
     $("wfThisPhone").hidden = people().some((p) => p.key === "this-phone");
+    $("wfHistOn").classList.toggle("on", !!s.history);
+    $("wfOutOn").classList.toggle("on", !!s.outages);
     $("wfPeople").innerHTML = people().length ? people().map((p) => `<div class="set-row"><div class="set-text"><b>${esc(p.name)}</b><span>${p.key === "this-phone" ? "This phone · updates right away" : esc(p.key) + " · checked every 15 min"}</span></div><button class="ghost center auto danger" data-unperson="${esc(p.key)}">Remove</button></div>`).join("")
       : `<p class="note" style="margin:0">No one yet. On the Devices tab, tap someone's phone and choose “This is a person's phone”.</p>`;
     const sc = await scenesList();
@@ -273,6 +365,7 @@
       <div class="list">
         <button class="primary full" id="devSave">Save name</button>
         ${side ? `<button class="ghost center" id="devOpen">Open ${esc(side.name)}</button>` : ""}
+        ${router().pass && d.mac ? `<button class="ghost center ${paused.has(d.mac.toLowerCase()) ? "" : "danger"}" id="devPause">${paused.has(d.mac.toLowerCase()) ? "Resume internet" : "Pause internet"}</button>` : ""}
       </div>
       <div class="label" style="margin-top:18px">Who's home</div>
       ${personOf(d) ? `<p class="note" style="margin-top:0">This is ${esc(personOf(d).name)}'s phone.</p><div class="list"><button class="ghost center danger" id="devUnperson">Not a person's phone</button></div>`
@@ -302,6 +395,14 @@
       toast("Saved");
     };
     if (side) body.querySelector("#devOpen").onclick = () => House.show(side.id);
+    body.querySelector("#devPause")?.addEventListener("click", async (e) => {
+      const pause = !paused.has(d.mac.toLowerCase());
+      if (pause && !confirm(`Cut the internet for ${d.label}? It stays connected to the Wi-Fi.`)) return;
+      e.currentTarget.disabled = true;
+      e.currentTarget.textContent = pause ? "Pausing…" : "Resuming…";
+      try { await setPaused(d, pause); toast(pause ? `${d.label} paused` : `${d.label} back online`); House.closeSheet(); paint(); }
+      catch (err) { toast(err.message || "Couldn't change it", true); House.closeSheet(); }
+    });
   }
 
   House.side({
@@ -312,6 +413,11 @@
         <div class="card glass" id="wfHome" hidden></div>
         <input class="field search" id="wfSearch" placeholder="Search by name, address or maker" aria-label="Search devices">
         <div id="wfList"></div>` },
+      { id: "history", label: "History", icon: "clock", html: `
+        <div class="label">Internet</div>
+        <div class="card glass" id="wfNet"></div>
+        <div class="label">Devices coming and going</div>
+        <div id="wfLog"></div>` },
       { id: "tools", label: "Tools", icon: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>', html: `
         <div class="label">Internet speed</div>
         <div class="card glass">
@@ -332,6 +438,12 @@
       { id: "settings", label: "Settings", icon: "gear" },
     ],
     settingsHtml: `
+      <div class="label">History</div>
+      <div class="card glass">
+        <div class="set-row"><div class="set-text"><b>Device history</b><span>Keeps when each device joined and left (checked about every 15 min). Most accurate with the router signed in.</span></div><button class="tgl" id="wfHistOn" aria-label="Device history"><i></i></button></div>
+        <div class="set-row"><div class="set-text"><b>Internet outage log</b><span>Checks the internet about every 5 min while you're on the home Wi-Fi.</span></div><button class="tgl" id="wfOutOn" aria-label="Internet outage log"><i></i></button></div>
+        <div class="list"><button class="ghost center" id="wfLogClear">Clear history</button></div>
+      </div>
       <div class="label">Alerts</div>
       <div class="card glass">
         <div class="set-row"><div class="set-text"><b>New device alert</b><span>A notification when a device joins your Wi-Fi for the first time. Checked about every 15 min; it learns your devices for the first hour. Most reliable with the router signed in.</span></div><button class="tgl" id="wfAlerts" aria-label="New device alert"><i></i></button></div>
@@ -405,6 +517,9 @@
         try { watch = await Net.addThisPhone({ name }); $("wfMeName").value = ""; toast(`${name} added: updates right away`); paint(); }
         catch (e) { toast(e.message || "Couldn't add this phone", true); }
       };
+      $("wfHistOn").onclick = () => { buzz(); watch.settings.history = !watch.settings.history; saveWatch(watch.settings.history ? "Device history on" : "Device history off"); };
+      $("wfOutOn").onclick = () => { buzz(); watch.settings.outages = !watch.settings.outages; saveWatch(watch.settings.outages ? "Outage log on" : "Outage log off").then(() => watch.settings.outages && Net.checkInternet().then(loadLog).catch(() => {})); };
+      $("wfLogClear").onclick = async () => { if (!confirm("Clear device history and the outage log?")) return; try { log = await Net.clearWifiLog(); } catch {} paintHistory(); toast("History cleared"); };
       $("wfAlerts").onclick = () => { buzz(); watch.settings.alerts = !watch.settings.alerts; saveWatch(watch.settings.alerts ? "New device alert on" : "New device alert off"); };
       $("wfPeople").addEventListener("click", (e) => {
         const b = e.target.closest("[data-unperson]");
@@ -430,6 +545,8 @@
     },
     onShow(tab) {
       if (tab === "devices" && !busy && !devices.length) load(); else paint();
+      if (tab === "history") loadLog();
+      if (tab === "devices" && router().pass) loadPaused().then(paint);
       if (tab === "devices" && people().length) Net.checkPresence().then((w) => { watch = w; paintHome(); }).catch(() => {});
     },
   });
