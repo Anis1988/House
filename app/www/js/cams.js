@@ -193,12 +193,17 @@
     };
     try {
       const get = () => fetch(`https://webrtc.api.wyze.com/signaling/device/${encodeURIComponent(c.mac)}?use_trickle=true`, {
-        headers: { authorization: acct.access, "content-type": "application/json", "User-Agent": `wyze_android_${APP_VER}` },
+        // Same headers as the Wyze iOS app (what docker-wyze-bridge sends for this endpoint).
+        headers: { authorization: `Bearer ${acct.access}`, "content-type": "application/json", "User-Agent": "Wyze/3.1.6.1 (iPhone; iOS 17.1.1; Scale/3.00)", appversion: "3.1.6.1", env: "prod" },
       }).then((r) => r.json());
       let j = await get();
       if (String(j.code) === "2001" && acct.refresh) { await call("/v2/home_page/get_object_list"); j = await get(); } // refreshes the token
-      const res = j.results || j.data || {};
-      if (!res.signalingUrl) return fail(j.msg || j.message || "Wyze didn't offer a live stream for this camera. Check it plays in the Wyze Web Portal.");
+      const res = (j.data || j).results || {};
+      if (!res.signalingUrl) {
+        const code = j.code ?? j.errorCode ?? j.status ?? "";
+        const why = j.msg || j.description || j.error || "";
+        return fail(`Wyze didn't start a live stream for this camera${code !== "" ? ` (Wyze said: ${code}${why ? " " + why : ""})` : ""}. Check it plays in the Wyze Web Portal.`);
+      }
       const servers = (res.servers || []).map((x) => ({ urls: x.urls || x.url, username: x.username, credential: x.credential }));
       const pc = new RTCPeerConnection({ iceServers: servers });
       const ws = new WebSocket(decodeURIComponent(res.signalingUrl));
@@ -212,7 +217,8 @@
         if (pc.connectionState === "failed") fail("The stream stopped. Close and try again.");
       };
       const b64 = (o) => btoa(JSON.stringify(o));
-      pc.onicecandidate = (e) => { if (e.candidate && ws.readyState === 1) ws.send(JSON.stringify({ action: "ICE_CANDIDATE", messagePayload: b64(e.candidate.toJSON()) })); };
+      const send = (action, payload) => ws.send(JSON.stringify({ action, messagePayload: b64(payload), recipientClientId: phoneId }));
+      pc.onicecandidate = (e) => { if (e.candidate && ws.readyState === 1) send("ICE_CANDIDATE", e.candidate.toJSON()); };
       ws.onmessage = async (m) => {
         let msg; try { msg = JSON.parse(m.data); } catch { return; }
         if (!msg.messagePayload) return;
@@ -223,7 +229,7 @@
       ws.onerror = () => fail("Couldn't reach Wyze's live stream.");
       ws.onopen = async () => {
         await pc.setLocalDescription(await pc.createOffer());
-        ws.send(JSON.stringify({ action: "SDP_OFFER", messagePayload: b64({ type: "offer", sdp: pc.localDescription.sdp }) }));
+        send("SDP_OFFER", { type: "offer", sdp: pc.localDescription.sdp });
       };
       setTimeout(() => { if (camLive?.pc === pc && pc.connectionState !== "connected") fail("No video from the camera. Check it plays in the Wyze Web Portal (it may need Cam Plus)."); }, 25000);
     } catch (e) { fail(e.message || "Couldn't start the live view"); }
