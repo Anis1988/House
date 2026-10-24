@@ -49,7 +49,10 @@ public class LightsPlugin extends Plugin {
         call.resolve();
     }
 
-    /** { scene: {...} } runs one of your scenes (saved or not, for "Try it"); { fade: seconds }. */
+    // House scenes can wait on a TV waking up; keep that off the light command queue.
+    private final ExecutorService house = Executors.newCachedThreadPool();
+
+    /** { scene: {...}, fade?: seconds } runs a house scene (saved or not, for "Try it"). → { failed: [part names] } */
     @PluginMethod
     public void runScene(PluginCall call) {
         JSObject scene = call.getObject("scene");
@@ -58,10 +61,49 @@ public class LightsPlugin extends Plugin {
             call.reject("No scene");
             return;
         }
-        commands.execute(() -> {
-            Lifx.runCustom(getContext(), scene, fade * 1000);
-            done(call, 0);
+        house.execute(() -> {
+            java.util.List<String> failed = SceneTimers.runScene(getContext(), scene, fade * 1000);
+            LightsWidget.redraw(getContext());
+            JSObject r = new JSObject();
+            r.put("failed", new JSArray(failed));
+            call.resolve(r);
         });
+    }
+
+    /** Puts the built-in scenes back if any were deleted. → { scenes } */
+    @PluginMethod
+    public void restoreScenes(PluginCall call) {
+        try {
+            JSObject r = new JSObject();
+            r.put("scenes", new JSArray(SceneTimers.restoreBuiltIns(getContext()).toString()));
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** { creds: {...} } logins for the TV, screen, Nest and Wyze, so timers can use them with the app closed. */
+    @PluginMethod
+    public void setCreds(PluginCall call) {
+        JSObject c = call.getObject("creds");
+        if (c != null) {
+            // Keep a Wyze token the native side refreshed since the page last saw it.
+            org.json.JSONObject old = HouseActions.creds(getContext());
+            if (old.optString("wyzeRefresh").length() > 0 && c.optString("wyzeRefresh").equals(old.optString("wyzeRefreshFrom"))) {
+                c.put("wyzeAccess", old.optString("wyzeAccess"));
+                c.put("wyzeRefresh", old.optString("wyzeRefresh"));
+                c.put("wyzeRefreshFrom", old.optString("wyzeRefreshFrom"));
+            }
+            HouseActions.saveCreds(getContext(), c);
+        }
+        call.resolve();
+    }
+
+    /** { lat, lon } for sunrise and sunset timers. */
+    @PluginMethod
+    public void setLocation(PluginCall call) {
+        SceneTimers.setLocation(getContext(), call.getDouble("lat", 0.0), call.getDouble("lon", 0.0));
+        call.resolve();
     }
 
     @PluginMethod

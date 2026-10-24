@@ -8,17 +8,19 @@ import android.content.SharedPreferences;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
+import java.util.TimeZone;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Your own scenes and the timers that run any scene at a time of day on chosen days.
- * Kept here (not only in the page) so a timer can run with the app closed.
+ * House scenes and the timers that run them, kept here (not only in the page) so a timer can run
+ * with the app closed.
  *
- * Scene: { id, name, icon, lights: { <bulb id>: { mode, bri, kelvin?, hue?, sat? } } }
- * Timer: { id, scene: "custom:<id>" | "bright" | "movie" | "night" | "off" | "on",
- *          minutes (after midnight), days: [1-7, Calendar.SUNDAY = 1], fade (seconds), on }
+ * Scene: { id, name, icon, lights: { <bulb id> | "*": { mode, bri, kelvin?, hue?, sat? } },
+ *          tv?, screen?, nest?, cams? }  (device parts: see HouseActions)
+ * Timer: { id, scene: "custom:<id>", when: "time"|"sunrise"|"sunset", minutes (after midnight, for
+ *          "time"), offset (minutes, for sun times), days: [1-7, Calendar.SUNDAY = 1], fade (s), on }
  */
 final class SceneTimers {
     static final String ACTION = "com.claude.house.SCENE_TIMER";
@@ -29,7 +31,48 @@ final class SceneTimers {
         return ctx.getSharedPreferences(Lifx.PREFS, Context.MODE_PRIVATE);
     }
 
-    static JSONArray scenes(Context ctx) { return array(ctx, "scenes"); }
+    // The scenes the app starts with. They're ordinary scenes: edit or delete them like your own.
+    private static JSONArray builtIns() {
+        try {
+            return new JSONArray()
+                .put(builtIn("bright", "Bright", "sun", new JSONObject().put("mode", "on").put("bri", 100).put("kelvin", 4000)))
+                .put(builtIn("movie", "Movie", "tv", new JSONObject().put("mode", "on").put("bri", 12).put("kelvin", 2200)))
+                .put(builtIn("night", "Night light", "moon", new JSONObject().put("mode", "on").put("bri", 3).put("kelvin", 1500)))
+                .put(builtIn("off", "All off", "power", new JSONObject().put("mode", "off")));
+        } catch (JSONException e) {
+            return new JSONArray();
+        }
+    }
+
+    private static JSONObject builtIn(String id, String name, String icon, JSONObject every) throws JSONException {
+        return new JSONObject().put("id", id).put("name", name).put("icon", icon).put("lights", new JSONObject().put("*", every));
+    }
+
+    /** Your scenes; the first time, the built-in ones go in front of any you already made. */
+    static JSONArray scenes(Context ctx) {
+        JSONArray mine = array(ctx, "scenes");
+        if (!prefs(ctx).getBoolean("scenesSeeded", false)) {
+            mine = withBuiltIns(mine);
+            prefs(ctx).edit().putBoolean("scenesSeeded", true).putString("scenes", mine.toString()).apply();
+        }
+        return mine;
+    }
+
+    /** Adds back any built-in scene that's missing (Settings → Bring back built-in scenes). */
+    static JSONArray restoreBuiltIns(Context ctx) {
+        JSONArray all = withBuiltIns(array(ctx, "scenes"));
+        saveScenes(ctx, all);
+        return all;
+    }
+
+    private static JSONArray withBuiltIns(JSONArray mine) {
+        JSONArray out = new JSONArray();
+        JSONArray b = builtIns();
+        for (int i = 0; i < b.length(); i++) if (find(mine, b.optJSONObject(i).optString("id")) == null) out.put(b.optJSONObject(i));
+        for (int i = 0; i < mine.length(); i++) out.put(mine.optJSONObject(i));
+        return out;
+    }
+
     static JSONArray timers(Context ctx) { return array(ctx, "timers"); }
 
     private static JSONArray array(Context ctx, String key) {
@@ -41,7 +84,7 @@ final class SceneTimers {
     }
 
     static void saveScenes(Context ctx, JSONArray scenes) {
-        prefs(ctx).edit().putString("scenes", scenes.toString()).apply();
+        prefs(ctx).edit().putBoolean("scenesSeeded", true).putString("scenes", scenes.toString()).apply();
     }
 
     static void saveTimers(Context ctx, JSONArray timers) {
@@ -49,8 +92,7 @@ final class SceneTimers {
         schedule(ctx);
     }
 
-    static JSONObject findScene(Context ctx, String id) {
-        JSONArray all = scenes(ctx);
+    private static JSONObject find(JSONArray all, String id) {
         for (int i = 0; i < all.length(); i++) {
             JSONObject s = all.optJSONObject(i);
             if (s != null && id.equals(s.optString("id"))) return s;
@@ -58,31 +100,95 @@ final class SceneTimers {
         return null;
     }
 
-    /** Runs a scene by its timer name: "custom:<id>" or a built-in. */
-    static void run(Context ctx, String which, int fadeMs) {
-        if (which.startsWith("custom:")) {
-            JSONObject s = findScene(ctx, which.substring(7));
-            if (s != null) Lifx.runCustom(ctx, s, fadeMs);
-        } else {
-            Lifx.scene(ctx, which, fadeMs);
-        }
+    /** Runs a whole house scene: lights first, then the other devices. Blocking. Returns what failed. */
+    static List<String> runScene(Context ctx, JSONObject scene, int fadeMs) {
+        if (scene.optJSONObject("lights") != null) Lifx.runCustom(ctx, scene, fadeMs);
+        return HouseActions.run(ctx, scene);
     }
 
-    /** When a timer next fires (epoch ms) after `after`, or 0 if it's off or has no days. */
-    static long nextFire(JSONObject t, long after) {
+    /** Runs a scene by its timer name: "custom:<id>", or an older timer's built-in name. */
+    static void run(Context ctx, String which, int fadeMs) {
+        String id = which.startsWith("custom:") ? which.substring(7) : which;
+        JSONObject s = find(scenes(ctx), id);
+        if (s != null) runScene(ctx, s, fadeMs);
+        else if (!which.startsWith("custom:")) Lifx.scene(ctx, which, fadeMs);
+    }
+
+    // ---- Sunrise / sunset ----
+
+    static void setLocation(Context ctx, double lat, double lon) {
+        prefs(ctx).edit().putFloat("lat", (float) lat).putFloat("lon", (float) lon).putBoolean("hasLocation", true).apply();
+        schedule(ctx);
+    }
+
+    /**
+     * Sunrise or sunset (epoch ms) on the given local day, or 0 if the sun doesn't rise/set there
+     * that day. The usual almanac formula (zenith 90.833°), good to a minute or two.
+     */
+    static long sunTime(Calendar localDay, double lat, double lon, boolean rise) {
+        int n = localDay.get(Calendar.DAY_OF_YEAR);
+        double lngHour = lon / 15;
+        double t = n + ((rise ? 6 : 18) - lngHour) / 24;
+        double m = 0.9856 * t - 3.289;
+        double l = norm(m + 1.916 * Math.sin(Math.toRadians(m)) + 0.020 * Math.sin(Math.toRadians(2 * m)) + 282.634, 360);
+        double ra = norm(Math.toDegrees(Math.atan(0.91764 * Math.tan(Math.toRadians(l)))), 360);
+        ra = (ra + Math.floor(l / 90) * 90 - Math.floor(ra / 90) * 90) / 15;
+        double sinDec = 0.39782 * Math.sin(Math.toRadians(l));
+        double cosDec = Math.cos(Math.asin(sinDec));
+        double cosH = (Math.cos(Math.toRadians(90.833)) - sinDec * Math.sin(Math.toRadians(lat))) / (cosDec * Math.cos(Math.toRadians(lat)));
+        if (cosH > 1 || cosH < -1) return 0;
+        double h = (rise ? 360 - Math.toDegrees(Math.acos(cosH)) : Math.toDegrees(Math.acos(cosH))) / 15;
+        double ut = norm(h + ra - 0.06571 * t - 6.622 - lngHour, 24);
+        Calendar c = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+        c.clear();
+        c.set(localDay.get(Calendar.YEAR), localDay.get(Calendar.MONTH), localDay.get(Calendar.DAY_OF_MONTH));
+        long at = c.getTimeInMillis() + Math.round(ut * 3600_000);
+        // The UTC hour wraps at midnight: move a day so the result lands on the asked local day.
+        Calendar local = Calendar.getInstance(localDay.getTimeZone());
+        local.setTimeInMillis(at);
+        int diff = dayIndex(localDay) - dayIndex(local);
+        return at + diff * 86_400_000L;
+    }
+
+    private static int dayIndex(Calendar c) {
+        return c.get(Calendar.YEAR) * 400 + c.get(Calendar.DAY_OF_YEAR);
+    }
+
+    private static double norm(double v, double max) {
+        v %= max;
+        return v < 0 ? v + max : v;
+    }
+
+    /** When a timer next fires (epoch ms) after `after`, or 0 if it's off. */
+    static long nextFire(Context ctx, JSONObject t, long after) {
         if (!t.optBoolean("on", true)) return 0;
         JSONArray days = t.optJSONArray("days");
         boolean every = days == null || days.length() == 0;
-        int m = t.optInt("minutes", 0);
-        Calendar c = Calendar.getInstance();
-        c.setTimeInMillis(after);
-        c.set(Calendar.HOUR_OF_DAY, m / 60);
-        c.set(Calendar.MINUTE, m % 60);
-        c.set(Calendar.SECOND, 0);
-        c.set(Calendar.MILLISECOND, 0);
-        for (int i = 0; i < 8; i++) {
-            if (c.getTimeInMillis() > after && (every || has(days, c.get(Calendar.DAY_OF_WEEK)))) return c.getTimeInMillis();
-            c.add(Calendar.DAY_OF_MONTH, 1);
+        String when = t.optString("when", "time");
+        boolean sun = "sunrise".equals(when) || "sunset".equals(when);
+        if (sun && !prefs(ctx).getBoolean("hasLocation", false)) return 0;
+        double lat = prefs(ctx).getFloat("lat", 0), lon = prefs(ctx).getFloat("lon", 0);
+        Calendar day = Calendar.getInstance();
+        day.setTimeInMillis(after);
+        for (int i = 0; i < 9; i++) {
+            if (every || has(days, day.get(Calendar.DAY_OF_WEEK))) {
+                long at;
+                if (sun) {
+                    long s = sunTime(day, lat, lon, "sunrise".equals(when));
+                    at = s == 0 ? 0 : s + t.optInt("offset", 0) * 60_000L;
+                    at -= at % 60_000; // on the minute
+                } else {
+                    Calendar c = (Calendar) day.clone();
+                    int m = t.optInt("minutes", 0);
+                    c.set(Calendar.HOUR_OF_DAY, m / 60);
+                    c.set(Calendar.MINUTE, m % 60);
+                    c.set(Calendar.SECOND, 0);
+                    c.set(Calendar.MILLISECOND, 0);
+                    at = c.getTimeInMillis();
+                }
+                if (at > after) return at;
+            }
+            day.add(Calendar.DAY_OF_MONTH, 1);
         }
         return 0;
     }
@@ -111,7 +217,7 @@ final class SceneTimers {
         for (int i = 0; i < all.length(); i++) {
             JSONObject t = all.optJSONObject(i);
             if (t == null) continue;
-            long at = nextFire(t, now);
+            long at = nextFire(ctx, t, now);
             if (at == 0) continue;
             if (best == 0 || at < best) { best = at; due = new JSONArray(); }
             if (at == best) due.put(t.optString("id"));

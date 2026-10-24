@@ -84,6 +84,7 @@
         online: d.conn_state === 1, on: d.device_params?.power_switch !== 0,
         thumb: d.device_params?.camera_thumbnails?.thumbnails_url || "", thumbAt: d.device_params?.camera_thumbnails?.thumbnails_ts,
       }));
+      store.setJson("wyze.cams", cams.map((c) => ({ mac: c.mac, model: c.model, name: c.name })));
       if (manual) toast(`${cams.length} camera${cams.length === 1 ? "" : "s"}`);
     } catch (e) { toast(e.message, true); }
     busy = false;

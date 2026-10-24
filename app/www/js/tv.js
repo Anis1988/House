@@ -17,6 +17,7 @@ const LG = (() => {
   };
 
   const TV = {
+    manifest: MANIFEST,
     ip: store.get("lg.ip", ""),
     ready: false,
     pairing: false,
@@ -216,6 +217,7 @@ const LG = (() => {
     if (!LG.ready) return;
     try {
       [apps, inputs] = await Promise.all([LG.apps(), LG.inputs().catch(() => [])]);
+      store.setJson("lg.apps", apps.map((a) => ({ id: a.id, title: a.title })));
     } catch { return; }
     $("tvInputs").innerHTML = inputs.map((i) => `<button class="chip${i.connected ? "" : " off"}${st?.appId === i.appId ? " on" : ""}" data-input="${esc(i.id)}">${svg("input")}${esc(i.label)}</button>`).join("") || `<span class="muted small">No inputs</span>`;
     $("tvApps").innerHTML = apps.map((a) => `<button class="app-btn${st?.appId === a.id ? " now" : ""}" data-app="${esc(a.id)}"><span class="ico" style="--bgc:${esc(a.bgColor || "#262b3d")}" data-icon="${esc(a.icon || "")}"><b>${esc(a.title.slice(0, 2))}</b></span><span>${esc(a.title)}</span></button>`).join("");

@@ -495,8 +495,11 @@ final class Lifx {
         int dur = fadeMs > 0 ? fadeMs : 800;
         Map<String, Light> lights = cached(ctx);
         List<Cmd> colors = new ArrayList<>(), ons = new ArrayList<>(), offs = new ArrayList<>();
+        // "*" is every bulb not listed by name (the built-in scenes use it, so new bulbs join in).
+        JSONObject every = wanted.optJSONObject("*");
         for (Light l : lights.values()) {
             JSONObject s = wanted.optJSONObject(l.id);
+            if (s == null) s = every;
             if (s == null) continue;
             if ("off".equals(s.optString("mode"))) {
                 l.on = false;

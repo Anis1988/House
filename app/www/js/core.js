@@ -8,7 +8,11 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } },
-  set(k, v) { try { v === null || v === undefined ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+  set(k, v) {
+    try { v === null || v === undefined ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {}
+    // Device logins changed: hand them to the native side, which runs scene timers with the app closed.
+    if (/^(lg|ss|nest|wyze)\./.test(k)) House?.syncCreds?.();
+  },
   json(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   setJson(k, v) { this.set(k, JSON.stringify(v)); },
 };
@@ -105,6 +109,21 @@ const House = {
   side(def) { this.sides.push(def); },
   byId(id) { return this.sides.find((s) => s.id === id); },
   hidden() { return store.json("house.hidden", []); },
+
+  /** Sends the TV, screen, Nest and Wyze logins to the native side (waits a moment to batch changes). */
+  syncCreds() {
+    clearTimeout(this._credsTimer);
+    this._credsTimer = setTimeout(() => {
+      const nest = store.json("nest.cfg", {}), tok = store.json("nest.tok", null), wy = store.json("wyze.acct", null);
+      Lights.setCreds({ creds: {
+        lgIp: store.get("lg.ip", ""), lgKey: store.get("lg.key", ""), lgMac: store.get("lg.mac", ""),
+        lgManifest: JSON.stringify(typeof LG !== "undefined" ? LG.manifest : {}),
+        ssIp: store.get("ss.ip", ""), ssToken: store.get("ss.token", ""), ssMac: store.get("ss.mac", ""),
+        nestProject: nest.project || "", nestClient: nest.clientId || "", nestSecret: nest.secret || "", nestRefresh: tok?.refresh || "",
+        wyzeAccess: wy?.access || "", wyzeRefresh: wy?.refresh || "", wyzePhone: store.get("wyze.phone", ""), wyzeCams: store.json("wyze.cams", []),
+      } }).catch(() => {});
+    }, 400);
+  },
   visible() { const h = this.hidden(); return this.sides.filter((s) => !h.includes(s.id)); },
   page(sideId, tabId) { return document.querySelector(`.page[data-page="${sideId}:${tabId}"]`); },
 
@@ -127,6 +146,7 @@ const House = {
       pages.appendChild(g);
     }
     for (const s of this.sides) s.mount?.();
+    this.syncCreds();
     this._bindGeneral();
     this._buildSwitch();
     const want = store.get("house.side");
