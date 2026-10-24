@@ -238,6 +238,8 @@ const Lights = plugin("Lights", (() => {
           <p id="emptyText">Your phone needs to be on the home Wi-Fi.</p>
           <button class="primary" id="emptyScan">Find lights</button>
         </div>` },
+      { id: "scenes", label: "Scenes", icon: "star", html: House.scenes.scenesHtml },
+      { id: "timers", label: "Timers", icon: "clock", html: House.scenes.timersHtml },
       { id: "settings", label: "Settings", icon: "gear" },
     ],
     settingsHtml: `
@@ -251,15 +253,16 @@ const Lights = plugin("Lights", (() => {
         </div>
         <div class="list"><button class="ghost center danger" id="forgetBtn">Forget all lights</button></div>
         <p class="note">LIFX bulbs only join <b>2.4 GHz</b> Wi-Fi. Names and rooms come from the LIFX app.</p>
-      </div>`,
+      </div>` + House.scenes.settingsHtml,
     guide: [
       ["bulb", "Turn a light on or off", "Tap its tile. Drag the bar on the tile to dim it. The ⋯ button opens the details: colour and warm–cool on bulbs that have them."],
       ["power", "All lights and rooms", "The big switch turns every light on or off; the bar under it dims all lights that are on. Each room has its own Turn on / Turn off."],
-      ["home", "Scenes and timers", "Scenes, timers and Bedtime are on the Home side now, because a scene can also set the TV, screen, Nest and cameras."],
       ["apps", "Home-screen widget", "Long-press your home screen → Widgets → House to add All on / All off."],
       ["search", "A bulb is missing", "Check its wall switch is on. Then Settings → scan every address. Names and rooms come from the LIFX app."],
+      ...House.scenes.guide,
     ],
     mount() {
+      House.scenes.mount();
       q("#rooms").addEventListener("click", (e) => {
         const room = e.target.closest("[data-room]");
         if (room) { buzz(); const ids = lights.filter((l) => (l.group || "Other") === room.dataset.room).map((l) => l.id); power(ids, !room.classList.contains("on")); return; }
@@ -322,6 +325,7 @@ const Lights = plugin("Lights", (() => {
       setInterval(() => { if (!document.hidden && !dragging && House.current === "lights") refresh(); }, 20000);
     },
     onShow(tab) {
+      House.scenes.onShow(tab);
       renderSummary();
       if (tab === "lights") refresh();
     },

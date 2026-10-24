@@ -9,8 +9,7 @@ Every push to `main` builds and publishes the next version, and the app shows an
 
 | Side | How it talks | Tabs |
 |---|---|---|
-| 🏠 Home | Runs scenes on every device | Scenes · Timers · Settings |
-| 💡 Lights (8 LIFX) | Home Wi-Fi, no account | Lights · Settings |
+| 💡 Lights (8 LIFX) | Home Wi-Fi, no account | Lights · Scenes · Timers · Settings |
 | 📺 LG TV (OLED65C3) | Home Wi-Fi; accept once on the TV | Remote · Apps · Settings |
 | 🖥️ Samsung screen (Odyssey G7) | Home Wi-Fi; Allow once on the screen | Remote · Settings |
 | 🌡️ Nest thermostat + doorbell | Google Device Access (your own project, $5 once) | Thermostat · Doorbell · Settings |
@@ -19,7 +18,7 @@ Every push to `main` builds and publishes the next version, and the app shows an
 
 Any side can be hidden in Settings → Devices in the app. Logins and keys stay on the phone.
 
-- **Home:** house scenes: one tap sets the lights (each On with a brightness, Off, or left as is), the LG TV (on/off, an app, volume), the Samsung screen, Nest (mode and temperature, or Eco) and the Wyze cameras. Bright, Movie, Night light and All off come built in; edit or delete any scene (Settings brings the built-ins back). Timers run any scene at a time or before/after sunset or sunrise (set your city once), on chosen days, with an optional slow fade; daily Bedtime all-off. Timers run with the app closed.
+- **Scenes and timers (Lights side):** house scenes: one tap sets the lights (each On with a brightness, Off, or left as is), the LG TV (on/off, an app, volume), the Samsung screen, Nest (mode and temperature, or Eco) and the Wyze cameras. Bright, Movie, Night light and All off come built in; edit or delete any scene (Lights → Settings brings the built-ins back). Timers run any scene at a time or before/after sunset or sunrise (set your city once), on chosen days, with an optional slow fade; daily Bedtime all-off. Timers run with the app closed.
 - **Lights:** per bulb on/off and brightness (colour and warm–cool on bulbs that have them), rooms from the LIFX app, All lights switch and brightness, home-screen widget.
 - **LG TV:** power (on via Wake-on-LAN), arrows/OK, back/home, volume and channel, mute, play/pause, apps and inputs.
 - **Samsung screen:** arrows/OK, back/home/source, volume, mute, standby.

@@ -1,5 +1,5 @@
-// 🏠 Home: house scenes (lights + TV + screen + Nest + cameras in one tap) and the timers that run
-// them, including sunrise/sunset and Bedtime. Tabs: Scenes · Timers · Settings.
+// Scenes (lights + TV + screen + Nest + cameras in one tap) and the timers that run them, including
+// sunrise/sunset and Bedtime. Shown on the Lights side as its Scenes and Timers tabs.
 // Scenes and timers are kept natively (SceneTimers/HouseActions), so timers run with the app closed.
 
 (() => {
@@ -40,12 +40,12 @@
     return parts.join(" · ") || "Nothing set yet";
   }
   function renderScenes() {
-    $("homeScenes").innerHTML = scenes.map((s) => `
+    const html = scenes.map((s) => `
       <div class="scene glass mine" data-run="${esc(s.id)}" role="button" tabindex="0" style="--sc: var(--grad); --sc0: var(--a1)">
         <button class="scene-edit" data-edit="${esc(s.id)}" aria-label="Edit ${esc(s.name)}">${svg('<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>')}</button>
         <span class="ic">${svg(s.icon || "star")}</span><b>${esc(s.name)}</b><span>${esc(summary(s))}</span>
-      </div>`).join("") + `<button class="scene new-scene" id="newScene">${svg("plus")}<b>New scene</b><span>Lights, TV, Nest, cameras…</span></button>`;
-    $("newScene").onclick = () => { buzz(6); openScene(null); };
+      </div>`).join("") + `<button class="scene new-scene" data-new>${svg("plus")}<b>New scene</b><span>Lights, TV, Nest, cameras…</span></button>`;
+    document.querySelectorAll(".scenes-grid").forEach((g) => (g.innerHTML = html));
   }
 
   async function run(s, trying) {
@@ -276,8 +276,7 @@
     return `${day} ${fmtClock(at)}`;
   };
   function renderTimers() {
-    if (!$("homeTimers")) return;
-    $("homeTimers").innerHTML = timers.length ? `<div class="card glass" style="padding:6px 16px">` + timers
+    const html = timers.length ? `<div class="card glass" style="padding:6px 16px">` + timers
       .slice().sort((a, b) => (nextFire({ ...a, on: true }) || 9e15) - (nextFire({ ...b, on: true }) || 9e15)).map((t) => `
       <div class="set-row timer-row" data-timer="${t.id}">
         <div class="set-text"><b class="t-time">${esc(whenText(t))}</b><span>${esc(sceneName(t.scene))} · ${daysText(t.days)}${t.fade ? ` · fade ${FADES.find((f) => f[0] === t.fade)?.[1] || ""}` : ""}${(t.when || "time") !== "time" && !loc() ? " · set your city first" : ""}</span></div>
@@ -285,7 +284,8 @@
       </div>`).join("") + `</div>`
       : `<div class="card glass"><p class="note" style="margin:0">No timers yet. Add one to run a scene at a set time or at sunset, like the lights coming on in the evening or a slow wake-up.</p></div>`;
     const next = timers.map((t) => nextFire(t)).filter(Boolean).sort()[0];
-    $("timerNext").textContent = next ? `next ${fmtNext(next)}` : "";
+    document.querySelectorAll(".timers-list").forEach((el) => (el.innerHTML = html));
+    document.querySelectorAll(".timer-next").forEach((el) => (el.textContent = next ? `next ${fmtNext(next)}` : ""));
   }
   async function saveTimers(msg) {
     renderTimers();
@@ -318,7 +318,7 @@
       body.querySelector("#tmOffRow").hidden = !sun;
       body.querySelectorAll("[data-day]").forEach((b) => b.classList.toggle("on", t.days.includes(+b.dataset.day)));
       body.querySelectorAll("[data-fade]").forEach((b) => b.classList.toggle("on", +b.dataset.fade === t.fade));
-      body.querySelector("#tmNext").textContent = sun && !loc() ? "Set your city in Home → Settings so the app knows when the sun sets."
+      body.querySelector("#tmNext").textContent = sun && !loc() ? "Set your city in Lights → Settings so the app knows when the sun sets."
         : `${whenText(t)}, ${daysText(t.days).toLowerCase()}. Next: ${fmtNext(nextFire({ ...t, on: true }))}.`;
     };
     paint();
@@ -330,7 +330,7 @@
     body.querySelector("#tmFade").onclick = (e) => { const b = e.target.closest("[data-fade]"); if (b) { buzz(6); t.fade = +b.dataset.fade; paint(); } };
     body.querySelector("#tmSave").onclick = () => {
       if (!t.scene) { toast("Make a scene first", true); return; }
-      if (t.when !== "time" && !loc()) { toast("Set your city in Home → Settings first", true); return; }
+      if (t.when !== "time" && !loc()) { toast("Set your city in Lights → Settings first", true); return; }
       t.on = true;
       const i = timers.findIndex((x) => x.id === t.id);
       if (i >= 0) timers[i] = t; else timers.push(t);
@@ -347,13 +347,16 @@
 
   /* ---- Bedtime (all lights off every day) ---- */
   function showBedtime(b) {
-    $("bedTgl").classList.toggle("on", b.on);
-    $("bedTimeRow").classList.toggle("disabled", !b.on);
-    $("bedTime").value = `${String(Math.floor(b.minutes / 60)).padStart(2, "0")}:${String(b.minutes % 60).padStart(2, "0")}`;
-    $("bedSub").textContent = b.on ? `All lights off every day at ${fmtTime(b.minutes)}` : "Turn every light off at a set time";
+    const all = (sel, fn) => document.querySelectorAll(sel).forEach(fn);
+    all("[data-bed-tgl]", (el) => el.classList.toggle("on", b.on));
+    all("[data-bed-row]", (el) => el.classList.toggle("disabled", !b.on));
+    all("[data-bed-time]", (el) => (el.value = `${String(Math.floor(b.minutes / 60)).padStart(2, "0")}:${String(b.minutes % 60).padStart(2, "0")}`));
+    all("[data-bed-sub]", (el) => (el.textContent = b.on ? `All lights off every day at ${fmtTime(b.minutes)}` : "Turn every light off at a set time"));
+    bedOn = b.on;
   }
-  async function saveBedtime(on) {
-    const [h, m] = $("bedTime").value.split(":").map(Number);
+  let bedOn = false;
+  async function saveBedtime(on, value) {
+    const [h, m] = (value || document.querySelector("[data-bed-time]").value).split(":").map(Number);
     const b = await Lights.setBedtime({ on, minutes: (h || 0) * 60 + (m || 0) });
     showBedtime(b);
     return b;
@@ -385,31 +388,33 @@
     finally { $("homeCityBtn").disabled = false; }
   }
 
-  House.side({
-    id: "home", name: "Home", icon: "home", blurb: "House scenes and timers",
-    tabs: [
-      { id: "scenes", label: "Scenes", icon: "star", html: `
+  // The Scenes and Timers pages, shown on the Lights side.
+  const SCENES_HTML = `
         <div class="label">Scenes</div>
-        <div class="grid2" id="homeScenes"></div>
-        <p class="note" style="margin-top:0">Tap a scene to run it. ✎ changes or deletes it. A scene can set the lights, TV, Samsung screen, Nest and cameras together.</p>` },
-      { id: "timers", label: "Timers", icon: "clock", html: `
-        <div class="label">Scene timers<span class="cnt" id="timerNext"></span></div>
-        <div id="homeTimers"></div>
-        <button class="ghost center" id="addTimer" style="flex:none">${svg("plus", 'style="width:18px;height:18px;vertical-align:-4px"')} Add a timer</button>
+        <div class="grid2 scenes-grid"></div>
+        <p class="note" style="margin-top:0">Tap a scene to run it. ✎ changes or deletes it. A scene can set the lights, TV, Samsung screen, Nest and cameras together.</p>`;
+  const TIMERS_HTML = `
+        <div class="label">Scene timers<span class="cnt timer-next"></span></div>
+        <div class="timers-list"></div>
+        <button class="ghost center" data-add-timer style="flex:none">${svg("plus", 'style="width:18px;height:18px;vertical-align:-4px"')} Add a timer</button>
         <div class="label" style="margin-top:18px">Every night</div>
         <div class="card glass">
           <div class="set-row">
-            <div class="set-text"><b>Bedtime</b><span id="bedSub">Turn every light off at a set time</span></div>
-            <button class="tgl" id="bedTgl" aria-label="Bedtime on or off"><i></i></button>
+            <div class="set-text"><b>Bedtime</b><span data-bed-sub>Turn every light off at a set time</span></div>
+            <button class="tgl" data-bed-tgl aria-label="Bedtime on or off"><i></i></button>
           </div>
-          <div class="set-row" id="bedTimeRow">
+          <div class="set-row" data-bed-row>
             <div class="set-text"><b>Time</b><span>Lights fade off over 3 seconds</span></div>
-            <input class="field time-field" type="time" id="bedTime" value="23:30">
+            <input class="field time-field" type="time" data-bed-time value="23:30">
           </div>
         </div>
-        <p class="note">Timers and Bedtime work with the app closed. If your phone restarts, they're set again on their own.</p>` },
-      { id: "settings", label: "Settings", icon: "gear" },
-    ],
+        <p class="note">Timers and Bedtime work with the app closed. If your phone restarts, they're set again on their own.</p>`;
+
+
+  // Not a side of its own: the Lights side shows these (Scenes and Timers tabs, its Settings, its Guide).
+  House.scenes = {
+    scenesHtml: SCENES_HTML,
+    timersHtml: TIMERS_HTML,
     settingsHtml: `
       <div class="label">Location</div>
       <div class="card glass">
@@ -427,25 +432,30 @@
       ["moon", "Bedtime", "Turns every light off at the same time each night."],
     ],
     mount() {
-      $("homeScenes").addEventListener("click", (e) => {
-        const ed = e.target.closest("[data-edit]");
-        if (ed) { buzz(6); openScene(ed.dataset.edit); return; }
-        const c = e.target.closest("[data-run]");
-        if (c) run(scenes.find((s) => s.id === c.dataset.run));
+      // One listener for both copies (Home and Lights).
+      document.addEventListener("click", (e) => {
+        if (e.target.closest(".scenes-grid")) {
+          const ed = e.target.closest("[data-edit]");
+          if (ed) { buzz(6); openScene(ed.dataset.edit); return; }
+          if (e.target.closest("[data-new]")) { buzz(6); openScene(null); return; }
+          const c = e.target.closest("[data-run]");
+          if (c) run(scenes.find((s) => s.id === c.dataset.run));
+          return;
+        }
+        if (e.target.closest(".timers-list")) {
+          const tg = e.target.closest("[data-ttoggle]");
+          if (tg) { buzz(); const t = timers.find((x) => x.id === tg.dataset.ttoggle); t.on = !t.on; saveTimers(t.on ? `Timer on · next ${fmtNext(nextFire(t))}` : "Timer off"); return; }
+          const r = e.target.closest("[data-timer]");
+          if (r) { buzz(6); openTimer(r.dataset.timer); }
+          return;
+        }
+        if (e.target.closest("[data-add-timer]")) { buzz(6); openTimer(null); return; }
+        if (e.target.closest("[data-bed-tgl]")) {
+          buzz();
+          saveBedtime(!bedOn).then((b) => toast(b.on ? `Bedtime set for ${fmtTime(b.minutes)}` : "Bedtime off")).catch(() => {});
+        }
       });
-      $("homeTimers").addEventListener("click", (e) => {
-        const tg = e.target.closest("[data-ttoggle]");
-        if (tg) { buzz(); const t = timers.find((x) => x.id === tg.dataset.ttoggle); t.on = !t.on; saveTimers(t.on ? `Timer on · next ${fmtNext(nextFire(t))}` : "Timer off"); return; }
-        const r = e.target.closest("[data-timer]");
-        if (r) { buzz(6); openTimer(r.dataset.timer); }
-      });
-      $("addTimer").onclick = () => { buzz(6); openTimer(null); };
-      $("bedTgl").onclick = async () => {
-        buzz();
-        const b = await saveBedtime(!$("bedTgl").classList.contains("on"));
-        toast(b.on ? `Bedtime set for ${fmtTime(b.minutes)}` : "Bedtime off");
-      };
-      $("bedTime").onchange = () => saveBedtime(true);
+      document.addEventListener("change", (e) => { if (e.target.matches("[data-bed-time]")) saveBedtime(true, e.target.value); });
       $("homeCityBtn").onclick = findCity;
       $("homeCity").onkeydown = (e) => { if (e.key === "Enter") findCity(); };
       $("homeRestore").onclick = async () => {
@@ -465,5 +475,5 @@
       if (tab === "timers") renderTimers();
       if (tab === "settings") paintCity();
     },
-  });
+  };
 })();
