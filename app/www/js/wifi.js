@@ -207,6 +207,7 @@
     const sc = await scenesList();
     const opts = (val) => `<option value="">Nothing</option>` + sc.map((x) => `<option value="custom:${esc(x.id)}" ${val === `custom:${x.id}` ? "selected" : ""}>${esc(x.name)}</option>`).join("");
     $("wfArrive").innerHTML = opts(s.arrive || "");
+    $("wfNoCloud").hidden = !s.leave || !!store.get("lifx.token");
     $("wfLeave").innerHTML = opts(s.leave || "");
   }
 
@@ -341,6 +342,7 @@
         </div>
         <label class="fld">When someone gets home, run<select class="field" id="wfArrive"></select></label>
         <label class="fld">When everyone has left, run<select class="field" id="wfLeave"></select></label>
+        <p class="note err" id="wfNoCloud" hidden>Once your phone is off the home Wi-Fi it can't reach the bulbs. Add a LIFX cloud token in <b>Lights → Settings</b>, or the lights won't change when you leave.</p>
         <p class="note">Checked about every 15 min, so it can take a little while. Someone counts as gone after their phone is missing twice in a row. Phones with “private Wi-Fi address” turned off for this network are recognised more reliably. Lights can only be reached from the home Wi-Fi: for a leave scene, add a LIFX cloud token in Lights → Settings.</p>
       </div>
       <div class="label">Router (ASUS)</div>

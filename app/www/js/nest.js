@@ -57,11 +57,27 @@
     paint();
   }
 
+  // The screen changes at once (callers update the device first); Google is told in the background,
+  // and the real state is read back a few seconds after the last change.
+  let reloadTimer;
   async function command(d, cmd, params, ok) {
-    buzz();
-    try { await api(`${d.name}:executeCommand`, { command: `sdm.devices.commands.${cmd}`, params }); if (ok) toast(ok); setTimeout(() => load(), 1200); }
-    catch (e) { toast(e.message, true); }
+    try {
+      await api(`${d.name}:executeCommand`, { command: `sdm.devices.commands.${cmd}`, params });
+      if (ok) toast(ok);
+      clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => load(), 4000);
+    } catch (e) { toast(e.message, true); load(); }
   }
+  // + and − pressed quickly: send only the final temperature, once the taps stop.
+  let setpointTimer;
+  function sendSetpoint(t, mode, v) {
+    clearTimeout(setpointTimer);
+    setpointTimer = setTimeout(() => {
+      if (mode === "HEAT") command(t, "ThermostatTemperatureSetpoint.SetHeat", { heatCelsius: v });
+      else command(t, "ThermostatTemperatureSetpoint.SetCool", { coolCelsius: v });
+    }, 700);
+  }
+  const setTrait = (d, name, values) => { d.traits[`sdm.devices.traits.${name}`] = { ...trait(d, name), ...values }; };
 
   /* Thermostat dial */
   function arc(frac) {
@@ -105,15 +121,29 @@
         <button class="stat glass" data-eco><b>${eco ? "On" : "Off"}</b><span>Eco</span></button>
       </div>`;
     box.querySelectorAll("[data-step]").forEach((b) => (b.onclick = () => {
+      buzz(6);
       const step = +b.dataset.step * (fahrenheit() ? 5 / 9 : 0.5);
       const v = Math.round((target + step) * 10) / 10;
-      if (mode === "HEAT") { sp.heatCelsius = v; command(t, "ThermostatTemperatureSetpoint.SetHeat", { heatCelsius: v }); }
-      else { sp.coolCelsius = v; command(t, "ThermostatTemperatureSetpoint.SetCool", { coolCelsius: v }); }
+      if (mode === "HEAT") sp.heatCelsius = v; else sp.coolCelsius = v;
       paintThermo();
+      sendSetpoint(t, mode, v);
     }));
-    box.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => command(t, "ThermostatMode.SetMode", { mode: b.dataset.mode }, `Mode: ${label[b.dataset.mode] || b.dataset.mode}`)));
-    box.querySelector("[data-eco]").onclick = () => command(t, "ThermostatEco.SetMode", { mode: eco ? "OFF" : "MANUAL_ECO" }, eco ? "Eco off" : "Eco on");
-    box.querySelector("[data-away]").onclick = () => command(t, "ThermostatEco.SetMode", { mode: eco ? "OFF" : "MANUAL_ECO" }, eco ? "Welcome home: Eco off" : "Away: Eco on");
+    box.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => {
+      buzz();
+      const m = b.dataset.mode;
+      setTrait(t, "ThermostatMode", { mode: m });
+      setTrait(t, "ThermostatEco", { mode: "OFF" });
+      paintThermo();
+      command(t, "ThermostatMode.SetMode", { mode: m }, `Mode: ${label[m] || m}`);
+    }));
+    const toggleEco = (msgOn, msgOff) => {
+      buzz();
+      setTrait(t, "ThermostatEco", { mode: eco ? "OFF" : "MANUAL_ECO" });
+      paintThermo();
+      command(t, "ThermostatEco.SetMode", { mode: eco ? "OFF" : "MANUAL_ECO" }, eco ? msgOff : msgOn);
+    };
+    box.querySelector("[data-eco]").onclick = () => toggleEco("Eco on", "Eco off");
+    box.querySelector("[data-away]").onclick = () => toggleEco("Away: Eco on", "Welcome home: Eco off");
   }
   function paintDoor() {
     const box = $("nestDoor");
@@ -123,11 +153,82 @@
     box.innerHTML = ds.map((d) => {
       const live = trait(d, "CameraLiveStream").supportedProtocols || [];
       const kind = d.type.includes("DOORBELL") ? "Doorbell" : d.type.includes("DISPLAY") ? "Display" : "Camera";
+      const webrtc = live.includes("WEB_RTC");
       return `<div class="card glass"><div class="head-card"><div class="ic dev" style="padding:0;width:auto">${svg(kind === "Doorbell" ? "bell" : "cam")}</div>
-        <div class="grow"><b>${esc(nameOf(d))}</b><div class="status-line"><span class="dot on"></span>${kind} · connected to your Google account</div></div></div>
-        <p class="note">Live view (${esc(live.join(", ") || "none")}) and ring alerts are planned. Google sends doorbell events only to a cloud service, so they need one more setup step.</p></div>`;
+        <div class="grow"><b>${esc(nameOf(d))}</b><div class="status-line"><span class="dot on"></span>${kind}</div></div></div>
+        ${webrtc ? `<button class="live-open" data-live="${esc(d.name)}">${svg("play")}<span><b>Watch live</b><small>Video and sound from the ${kind.toLowerCase()}</small></span></button>`
+          : `<p class="note">This ${kind.toLowerCase()} only streams in a format phones can't play here (${esc(live.join(", ") || "none")}). Use the Google Home app for live view.</p>`}
+        <p class="note">Ring and motion alerts need Google's cloud events (Pub/Sub), coming later.</p></div>`;
     }).join("");
   }
+  /* Doorbell live view: WebRTC straight from Google (no extra servers). A stream lasts 5 minutes,
+     so it's extended every 4 minutes while the sheet is open. */
+  let live = null; // { pc, device, id, timer }
+  async function watchLive(name) {
+    const d = devices.find((x) => x.name === name);
+    if (!d) return;
+    buzz();
+    const body = House.sheet(`<h3>${esc(nameOf(d))}</h3><div class="sub" id="liveState">Connecting…</div>
+      <div class="live-box"><video id="liveVideo" autoplay playsinline muted></video><div class="live-wait" id="liveWait">Connecting to the doorbell…</div></div>
+      <div class="grid2" style="margin-top:12px;margin-bottom:0"><button class="ghost center" id="liveSound">${svg("vol")} Sound on</button><button class="ghost center danger" id="liveStop">Stop</button></div>`);
+    House.onSheetClose = stopLive;
+    body.querySelector("#liveStop").onclick = () => House.closeSheet();
+    body.querySelector("#liveSound").onclick = (e) => {
+      const v = $("liveVideo");
+      v.muted = !v.muted;
+      e.currentTarget.innerHTML = `${svg(v.muted ? "vol" : "mute")} ${v.muted ? "Sound on" : "Sound off"}`;
+    };
+    try {
+      const pc = new RTCPeerConnection();
+      // Google wants audio, video and a data channel, in that order.
+      pc.addTransceiver("audio", { direction: "recvonly" });
+      pc.addTransceiver("video", { direction: "recvonly" });
+      pc.createDataChannel("dataSendChannel");
+      const stream = new MediaStream();
+      pc.ontrack = (e) => {
+        stream.addTrack(e.track);
+        const v = $("liveVideo");
+        if (v && v.srcObject !== stream) v.srcObject = stream;
+      };
+      pc.onconnectionstatechange = () => {
+        const st = $("liveState");
+        if (!st) return;
+        if (pc.connectionState === "connected") { st.textContent = "Live"; $("liveWait").hidden = true; }
+        if (pc.connectionState === "failed") { st.textContent = "Connection lost"; $("liveWait").textContent = "The stream stopped. Close and try again."; $("liveWait").hidden = false; }
+      };
+      live = { pc, device: d };
+      await pc.setLocalDescription(await pc.createOffer());
+      // No trickle: wait (briefly) for the network routes to be in the offer.
+      await new Promise((res) => {
+        if (pc.iceGatheringState === "complete") return res();
+        const t = setTimeout(res, 2500);
+        pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); res(); } };
+      });
+      const r = await api(`${d.name}:executeCommand`, { command: "sdm.devices.commands.CameraLiveStream.GenerateWebRtcStream", params: { offerSdp: pc.localDescription.sdp } });
+      if (live?.pc !== pc) { pc.close(); return; } // closed while waiting
+      await pc.setRemoteDescription({ type: "answer", sdp: r.results.answerSdp });
+      live.id = r.results.mediaSessionId;
+      live.timer = setInterval(async () => {
+        try {
+          const x = await api(`${d.name}:executeCommand`, { command: "sdm.devices.commands.CameraLiveStream.ExtendWebRtcStream", params: { mediaSessionId: live.id } });
+          live.id = x.results?.mediaSessionId || live.id;
+        } catch {}
+      }, 4 * 60e3);
+    } catch (e) {
+      const msg = /RTCPeerConnection|SessionDescription/.test(e.message || "") ? "The doorbell's video didn't start. Close and try again." : e.message || "Couldn't start the live view";
+      if ($("liveWait")) { $("liveWait").textContent = msg; $("liveState").textContent = "Not connected"; }
+      stopLive();
+    }
+  }
+  function stopLive() {
+    if (!live) return;
+    const { pc, device, id, timer } = live;
+    live = null;
+    clearInterval(timer);
+    pc.close();
+    if (id) api(`${device.name}:executeCommand`, { command: "sdm.devices.commands.CameraLiveStream.StopWebRtcStream", params: { mediaSessionId: id } }).catch(() => {});
+  }
+
   function setupCard() {
     return `<div class="card glass empty"><div class="big">${svg("thermo")}</div><b>Connect your Nest</b><p>Nest only works through Google's cloud. It's a one-time setup ($5 to Google).</p><button class="primary" data-goto-settings>Set up</button></div>`;
   }
@@ -197,6 +298,7 @@
     ],
     mount() {
       document.addEventListener("click", (e) => { if (e.target.closest("[data-goto-settings]") && House.current === "nest") House.showTab("settings"); });
+      $("nestDoor").addEventListener("click", (e) => { const b = e.target.closest("[data-live]"); if (b) watchLive(b.dataset.live); });
       $("nestRefresh").onclick = () => { buzz(6); load(true); };
       $("nestSignIn").onclick = () => {
         const c = saveCfg();

@@ -198,6 +198,8 @@ final class WifiWatch {
                 if (Presence.KEY.equals(key)) continue; // this phone: told right away by Android (Presence)
                 JSONObject st = state.optJSONObject(key);
                 if (st == null) st = new JSONObject().put("home", false).put("misses", 0);
+                // The address this phone itself has: that entry is this phone again, handled by Presence.
+                if (key.equals(Presence.ownIp(ctx))) continue;
                 boolean seen = now.containsKey(key);
                 if (!seen) for (JSONObject d : now.values()) if (key.equals(d.optString("ip"))) seen = true;
                 boolean wasHome = st.optBoolean("home");
@@ -217,12 +219,20 @@ final class WifiWatch {
         if (someoneLeft) left(ctx);
     }
 
+    /**
+     * Is anyone else still home? This phone's state is live; another phone only counts if it was
+     * actually seen in the last 30 minutes (once this phone is away it can't check them any more,
+     * so an old "home" mustn't keep the leave scene from ever running).
+     */
     private static boolean anyoneHome(Context ctx) {
         JSONObject state = presence(ctx);
         JSONArray people = settings(ctx).optJSONArray("people");
+        long now = System.currentTimeMillis();
         for (int i = 0; people != null && i < people.length(); i++) {
-            JSONObject st = state.optJSONObject(people.optJSONObject(i).optString("key").toLowerCase());
-            if (st != null && st.optBoolean("home")) return true;
+            String key = people.optJSONObject(i).optString("key").toLowerCase();
+            JSONObject st = state.optJSONObject(key);
+            if (st == null || !st.optBoolean("home")) continue;
+            if (Presence.KEY.equals(key) || now - st.optLong("seenAt", st.optLong("since")) < 30 * 60_000L) return true;
         }
         return false;
     }

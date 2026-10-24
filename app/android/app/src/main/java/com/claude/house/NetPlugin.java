@@ -448,8 +448,11 @@ public class NetPlugin extends Plugin {
             org.json.JSONObject s = WifiWatch.settings(getContext());
             org.json.JSONArray people = s.optJSONArray("people");
             org.json.JSONArray next = new org.json.JSONArray();
+            String own = Presence.ownIp(getContext());
             for (int i = 0; people != null && i < people.length(); i++) {
-                if (!Presence.KEY.equals(people.getJSONObject(i).optString("key"))) next.put(people.getJSONObject(i));
+                String key = people.getJSONObject(i).optString("key");
+                // Drop an older entry for this same phone (added by its address), or it would stay "home".
+                if (!Presence.KEY.equals(key) && !key.equals(own)) next.put(people.getJSONObject(i));
             }
             next.put(new org.json.JSONObject().put("key", Presence.KEY).put("name", name));
             s.put("people", next);

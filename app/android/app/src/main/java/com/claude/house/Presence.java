@@ -58,6 +58,24 @@ final class Presence {
         return null;
     }
 
+    /** This phone's own address on the Wi-Fi now, or "" (also remembered from the last time at home). */
+    static String ownIp(Context ctx) {
+        ConnectivityManager cm = (ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
+        for (Network n : cm.getAllNetworks()) {
+            NetworkCapabilities caps = cm.getNetworkCapabilities(n);
+            LinkProperties lp = cm.getLinkProperties(n);
+            if (caps == null || lp == null || !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) continue;
+            for (LinkAddress la : lp.getLinkAddresses()) {
+                if (la.getAddress() instanceof Inet4Address) {
+                    String ip = la.getAddress().getHostAddress();
+                    prefs(ctx).edit().putString("ownIp", ip).apply();
+                    return ip;
+                }
+            }
+        }
+        return prefs(ctx).getString("ownIp", "");
+    }
+
     /** True when this phone is on the home Wi-Fi right now. */
     static boolean atHome(Context ctx) {
         String gw = prefs(ctx).getString("homeGateway", "");
