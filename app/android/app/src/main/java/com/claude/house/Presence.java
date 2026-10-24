@@ -180,7 +180,7 @@ final class Presence {
         if (!tracked(ctx)) return;
         long now = System.currentTimeMillis();
         if (atHome(ctx)) {
-            prefs(ctx).edit().putLong("lostAt", 0).apply();
+            prefs(ctx).edit().putLong("lostAt", 0).putLong("homeSeenAt", now).apply();
             checkAt(ctx, now + TICK);
             if (!isHome(ctx)) {
                 setState(ctx, true);
@@ -190,7 +190,10 @@ final class Presence {
         }
         long lostAt = prefs(ctx).getLong("lostAt", 0);
         if (lostAt == 0) {
-            lostAt = now;
+            // First time we notice: the phone left some time after it was last confirmed at home
+            // (the phone may have slept through the checks), so count from then, not from now.
+            long seen = prefs(ctx).getLong("homeSeenAt", 0);
+            lostAt = seen > 0 && seen < now ? Math.max(seen, now - AWAY_AFTER * 5) : now;
             prefs(ctx).edit().putLong("lostAt", lostAt).apply();
         }
         if (now - lostAt >= AWAY_AFTER) {

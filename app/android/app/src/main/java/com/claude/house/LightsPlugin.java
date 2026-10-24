@@ -28,6 +28,8 @@ public class LightsPlugin extends Plugin {
         Bedtime.schedule(getContext());
         SceneTimers.schedule(getContext());
         Presence.register(getContext());
+        // The app was opened: check home/away now instead of waiting for the next background check.
+        new Thread(() -> Presence.evaluate(getContext())).start();
     }
 
     // ---- Your own scenes and scene timers ----

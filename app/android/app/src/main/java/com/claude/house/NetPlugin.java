@@ -464,6 +464,15 @@ public class NetPlugin extends Plugin {
         getWatch(call);
     }
 
+    /** Checks this phone's home/away right now (cheap, no scan) and returns the Who's home state. */
+    @PluginMethod
+    public void checkPresence(PluginCall call) {
+        pool.execute(() -> {
+            Presence.evaluate(getContext());
+            getWatch(call);
+        });
+    }
+
     /** Runs one check now (who's home, new devices) and returns the result. */
     @PluginMethod
     public void checkWatch(PluginCall call) {

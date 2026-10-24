@@ -173,10 +173,13 @@
   let scannedAt = 0;
   function isHome(p) {
     const st = watch.presence[p.key];
-    if (p.key === "this-phone") return { home: !!st?.home, since: st?.since, instant: true };
+    if (p.key === "this-phone") return { home: !!st?.home, since: st?.since };
     const fresh = Date.now() - scannedAt < 5 * 60e3;
     const d = fresh && devices.find((x) => ((x.mac || "").toLowerCase() || x.ip) === p.key || x.ip === p.key);
     if (d?.online) return { home: true, since: st?.since };
+    // Not checked for over 30 min (this phone was away or asleep): say when it was last seen.
+    const seen = st?.seenAt || st?.since || 0;
+    if (st?.home && Date.now() - seen > 30 * 60e3) return { home: false, stale: true, seen };
     return { home: !!st?.home, since: st?.since };
   }
   const ago = (ts) => { if (!ts) return ""; const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
@@ -185,8 +188,10 @@
     $("wfHome").hidden = !ps.length;
     $("wfHome").innerHTML = `<div class="head-card" style="margin-bottom:6px"><div class="grow"><b>Who's home</b></div></div>` + ps.map((p) => {
       const h = isHome(p);
-      return `<div class="set-row"><span class="dot ${h.home ? "on" : ""}"></span><div class="set-text"><b>${esc(p.name)}</b><span>${h.home ? "Home" : "Away"}${h.since ? ` · ${ago(h.since)}` : ""}</span></div></div>`;
-    }).join("");
+      const me = p.key === "this-phone";
+      const line = h.stale ? `Last seen ${ago(h.seen)} ago` : `${h.home ? "Home" : "Away"}${h.since ? ` · ${ago(h.since)}` : ""}`;
+      return `<div class="set-row"><span class="dot ${h.home ? "on" : ""}"></span><div class="set-text"><b>${esc(p.name)}${me ? ` <span class="muted small">(this phone)</span>` : ""}</b><span>${line}</span></div></div>`;
+    }).join("") + (ps.some((p) => p.key === "this-phone") ? "" : `<p class="note">Tip: Wi-Fi → Settings → <b>Add this phone</b> so your own phone updates right away.</p>`);
   }
   async function saveWatch(msg) {
     try { watch = await Net.setWatch({ settings: watch.settings }); if (msg) toast(msg); }
@@ -417,13 +422,15 @@
       };
       devices = store.json("wifi.last", []);
       Net.getWatch().then((w) => { watch = w; paint(); }).catch(() => {});
+      // Back in the app: check this phone's home/away right away.
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) Net.checkPresence().then((w) => { watch = w; paintHome(); }).catch(() => {}); });
       paint();
       paintSpeed();
       paintGuest();
     },
     onShow(tab) {
       if (tab === "devices" && !busy && !devices.length) load(); else paint();
-      if (tab === "devices" && people().length) Net.getWatch().then((w) => { watch = w; paintHome(); }).catch(() => {});
+      if (tab === "devices" && people().length) Net.checkPresence().then((w) => { watch = w; paintHome(); }).catch(() => {});
     },
   });
 })();
