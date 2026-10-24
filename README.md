@@ -22,13 +22,13 @@ Any side can be hidden in Settings → Devices in the app. Logins and keys stay 
 - **Lights:** per bulb on/off and brightness (colour and warm–cool on bulbs that have them), rooms from the LIFX app, All lights switch and brightness, home-screen widget.
 - **LG TV:** power (on via Wake-on-LAN), arrows/OK, back/home, volume and channel, mute, play/pause, apps and inputs.
 - **Samsung screen:** arrows/OK, back/home/source, volume, mute, standby.
-- **Nest:** thermostat dial (set temperature, Heat/Cool/Heat·Cool/Off, Eco, humidity), °C/°F. Doorbell live view (WebRTC, video and sound); ring alerts are planned. Big I'm away / I'm home button (Eco).
+- **Nest:** thermostat dial (set temperature, Heat/Cool/Heat·Cool/Off, Eco, humidity), °C/°F. Doorbell live view (WebRTC, video and sound); ring, person and motion alerts via your Pub/Sub subscription (checked every ~2 min); temperature and humidity history (day/week chart); humidity alert. Big I'm away / I'm home button (Eco).
 - **Wyze:** latest snapshot per camera (tap for full screen and Refresh), Live view (beta, the Wyze Web Portal stream), online state, on/off; Events tab with video clips when Wyze kept one; with the last two days of motion/sound/person alerts and their snapshots. Google-login accounts need a Wyze password first (Forgot password in the Wyze app).
 - **Wi-Fi:** every device on the network, grouped and named where possible (LIFX, TV, screen, cameras, Apple, Cast, Tuya…); tap one to give it your own name. New device alert (notification, checked every ~15 min), Who's home (mark phones as people; this phone updates right away, others every ~15 min; run a scene when someone arrives or everyone leaves; with a LIFX cloud token the lights also work when you're away), speed test with history, guest Wi-Fi QR code.
 
 ## Planned next
 
-- Nest doorbell live view and ring alerts (needs Google Pub/Sub)
+
 - Tesla Model 3 (Fleet API)
 - Samsung microwave (SmartThings)
 

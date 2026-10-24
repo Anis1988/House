@@ -464,6 +464,62 @@ public class NetPlugin extends Plugin {
         getWatch(call);
     }
 
+    // ---- Nest in the background: history, humidity alert, doorbell alerts ----
+
+    @PluginMethod
+    public void getNestWatch(PluginCall call) {
+        try {
+            JSObject r = new JSObject();
+            r.put("settings", new JSObject(NestWatch.settings(getContext()).toString()));
+            r.put("history", new JSArray(NestWatch.history(getContext()).toString()));
+            r.put("notifications", Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED);
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** { settings: { ring, motion, humOn, humLow, humHigh } } */
+    @PluginMethod
+    public void setNestWatch(PluginCall call) {
+        JSObject s = call.getObject("settings", new JSObject());
+        NestWatch.save(getContext(), s);
+        boolean alerts = s.optBoolean("ring") || s.optBoolean("motion") || s.optBoolean("humOn");
+        if (alerts && Build.VERSION.SDK_INT >= 33 && getPermissionState("notifications") != PermissionState.GRANTED) {
+            requestPermissionForAlias("notifications", call, "nestPermission");
+            return;
+        }
+        getNestWatch(call);
+    }
+
+    @PermissionCallback
+    private void nestPermission(PluginCall call) {
+        getNestWatch(call);
+    }
+
+    /** Saves a reading now (when the Nest side opens) and returns the history. */
+    @PluginMethod
+    public void nestTick(PluginCall call) {
+        pool.execute(() -> {
+            NestWatch.tick(getContext());
+            getNestWatch(call);
+        });
+    }
+
+    /** Checks the Pub/Sub subscription works: { events } or an error message. */
+    @PluginMethod
+    public void nestTestEvents(PluginCall call) {
+        pool.execute(() -> {
+            try {
+                JSObject r = new JSObject();
+                r.put("events", NestWatch.pullOnce(getContext()));
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "Couldn't read the events" : e.getMessage());
+            }
+        });
+    }
+
     /** Checks this phone's home/away right now (cheap, no scan) and returns the Who's home state. */
     @PluginMethod
     public void checkPresence(PluginCall call) {

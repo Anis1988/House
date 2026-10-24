@@ -14,6 +14,19 @@ public class ActionReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context ctx, Intent intent) {
         Context app = ctx.getApplicationContext();
+        if (NestWatch.ACTION_TICK.equals(intent.getAction()) || NestWatch.ACTION_RING.equals(intent.getAction())) {
+            boolean ring = NestWatch.ACTION_RING.equals(intent.getAction());
+            PendingResult result = goAsync();
+            new Thread(() -> {
+                try {
+                    if (ring) NestWatch.ring(app); else NestWatch.tick(app);
+                } catch (Exception ignored) {
+                } finally {
+                    result.finish();
+                }
+            }).start();
+            return;
+        }
         if (Presence.ACTION_NET.equals(intent.getAction()) || Presence.ACTION_CHECK.equals(intent.getAction())) {
             PendingResult result = goAsync();
             new Thread(() -> {

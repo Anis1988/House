@@ -119,7 +119,9 @@
         <div class="stat glass"><b>${shown(now)}°</b><span>Inside</span></div>
         <div class="stat glass"><b>${hum != null ? Math.round(hum) + "%" : "—"}</b><span>Humidity</span></div>
         <button class="stat glass" data-eco><b>${eco ? "On" : "Off"}</b><span>Eco</span></button>
-      </div>`;
+      </div>
+      <div class="card glass" style="margin-top:12px" id="nestHist"></div>`;
+    paintHistory();
     box.querySelectorAll("[data-step]").forEach((b) => (b.onclick = () => {
       buzz(6);
       const step = +b.dataset.step * (fahrenheit() ? 5 / 9 : 0.5);
@@ -232,6 +234,59 @@
   function setupCard() {
     return `<div class="card glass empty"><div class="big">${svg("thermo")}</div><b>Connect your Nest</b><p>Nest only works through Google's cloud. It's a one-time setup ($5 to Google).</p><button class="primary" data-goto-settings>Set up</button></div>`;
   }
+  /* History: inside temperature and humidity, saved every ~15 min in the background */
+  let history = [];
+  let histRange = store.get("nest.range", "day");
+  let watch = { settings: {} };
+  function paintHistory() {
+    const box = $("nestHist");
+    if (!box) return;
+    const span = histRange === "week" ? 7 * 864e5 : 864e5;
+    const pts = history.filter((p) => p[0] >= Date.now() - span);
+    const head = `<div class="row" style="justify-content:space-between"><b>History</b><div class="mini-seg" id="nestRange"><button data-range="day" class="${histRange === "day" ? "on" : ""}">Day</button><button data-range="week" class="${histRange === "week" ? "on" : ""}">Week</button></div></div>`;
+    if (pts.length < 2) { box.innerHTML = head + `<p class="note">Readings are saved about every 15 minutes. The chart fills in over the next hours.</p>`; return; }
+    const W = 320, H = 130, pad = 6;
+    const t0 = Date.now() - span, x = (t) => pad + ((t - t0) / span) * (W - 2 * pad);
+    const temps = pts.map((p) => +shown(p[1])), hums = pts.map((p) => p[2]).filter((h) => h != null);
+    const tMin = Math.min(...temps) - 0.5, tMax = Math.max(...temps) + 0.5;
+    const yT = (v) => H - pad - ((v - tMin) / (tMax - tMin || 1)) * (H - 2 * pad);
+    const yH = (v) => H - pad - (v / 100) * (H - 2 * pad);
+    const line = (vals, y) => vals.map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join("");
+    const tPath = line(pts.map((p) => [p[0], +shown(p[1])]), yT);
+    const hPath = line(pts.filter((p) => p[2] != null).map((p) => [p[0], p[2]]), yH);
+    const last = pts[pts.length - 1];
+    const labels = histRange === "week" ? [6, 4, 2, 0].map((d) => [Date.now() - d * 864e5, new Date(Date.now() - d * 864e5).toLocaleDateString([], { weekday: "short" })])
+      : [24, 18, 12, 6, 0].map((h) => [Date.now() - h * 36e5, h ? `-${h}h` : "now"]);
+    box.innerHTML = head + `
+      <svg viewBox="0 0 ${W} ${H + 16}" style="width:100%;height:auto;margin-top:10px" role="img" aria-label="Temperature and humidity history">
+        <path d="${hPath}" fill="none" stroke="var(--a3)" stroke-width="1.6" stroke-dasharray="4 3" opacity=".8"/>
+        <path d="${tPath}" fill="none" stroke="var(--a1)" stroke-width="2.4" stroke-linejoin="round"/>
+        ${labels.map(([t, l]) => `<text x="${x(t).toFixed(1)}" y="${H + 13}" font-size="10" fill="var(--muted)" text-anchor="middle">${l}</text>`).join("")}
+      </svg>
+      <div class="row small" style="gap:16px;margin-top:6px">
+        <span><span class="dot" style="background:var(--a1)"></span> Temperature ${shown(Math.min(...pts.map((p) => p[1])))}–${shown(Math.max(...pts.map((p) => p[1])))}° (now ${shown(last[1])}°)</span>
+      </div>
+      ${hums.length ? `<div class="row small muted"><span><span class="dot" style="background:var(--a3)"></span> Humidity ${Math.round(Math.min(...hums))}–${Math.round(Math.max(...hums))}% (now ${last[2] != null ? Math.round(last[2]) : "—"}%)</span></div>` : ""}`;
+    box.querySelector("#nestRange").onclick = (e) => { const b = e.target.closest("[data-range]"); if (b) { histRange = b.dataset.range; store.set("nest.range", histRange); paintHistory(); } };
+  }
+
+  /* Alerts (run in the background, see NestWatch) */
+  function paintAlerts() {
+    const s = watch.settings || {};
+    $("nestHumOn").classList.toggle("on", !!s.humOn);
+    $("nestHumLow").value = s.humLow ?? 30;
+    $("nestHumHigh").value = s.humHigh ?? 60;
+    $("nestRingOn").classList.toggle("on", !!s.ring);
+    $("nestMotionOn").classList.toggle("on", !!s.motion);
+    $("nestSub").value = store.get("nest.sub", "");
+    $("nestNotif").hidden = !(s.ring || s.motion || s.humOn) || watch.notifications;
+  }
+  async function saveAlerts(msg) {
+    try { watch = await Net.setNestWatch({ settings: watch.settings }); if (msg) toast(msg); }
+    catch { toast("Couldn't save that", true); }
+    paintAlerts();
+  }
+
   function paint() {
     paintThermo();
     paintDoor();
@@ -289,6 +344,30 @@
         <div class="list"><button class="ghost center" id="nestFinish">Finish sign-in</button></div>
         <div id="nestSigned" hidden><p class="note">${svg("check", 'style="width:16px;height:16px;vertical-align:-3px;color:var(--good)"')} Signed in. Your keys stay on this phone.</p><div class="list"><button class="ghost center danger" id="nestOut">Sign out</button></div></div>
       </div>
+      <div class="label">Humidity alert</div>
+      <div class="card glass">
+        <div class="set-row"><div class="set-text"><b>Tell me when it's too dry or humid</b><span>Checked about every 15 min.</span></div><button class="tgl" id="nestHumOn" aria-label="Humidity alert"><i></i></button></div>
+        <div class="row" style="margin-top:10px">
+          <label class="fld grow" style="margin-top:0">Below %<input class="field" id="nestHumLow" type="number" min="10" max="60" inputmode="numeric"></label>
+          <label class="fld grow" style="margin-top:0">Above %<input class="field" id="nestHumHigh" type="number" min="40" max="90" inputmode="numeric"></label>
+        </div>
+      </div>
+      <div class="label">Doorbell alerts</div>
+      <div class="card glass">
+        <div class="set-row"><div class="set-text"><b>Doorbell rings</b><span>A notification when someone rings.</span></div><button class="tgl" id="nestRingOn" aria-label="Ring alerts"><i></i></button></div>
+        <div class="set-row"><div class="set-text"><b>Person and motion</b><span>When the doorbell sees someone or motion.</span></div><button class="tgl" id="nestMotionOn" aria-label="Motion alerts"><i></i></button></div>
+        <p class="note">Google sends doorbell events to a Pub/Sub topic in your Google Cloud project; the app reads it about every 2 minutes. One-time setup:</p>
+        <ol class="steps">
+          <li>In <a data-open href="https://console.cloud.google.com/apis/library/pubsub.googleapis.com">Google Cloud</a>, turn on the <b>Cloud Pub/Sub API</b>.</li>
+          <li><a data-open href="https://console.cloud.google.com/cloudpubsub/topic/list">Pub/Sub → Topics</a> → <b>Create topic</b>, name it <b>nest-events</b>, keep “Add a default subscription” ticked.</li>
+          <li>Open the topic → <b>Permissions</b> (Show info panel) → <b>Add principal</b> <b>sdm-publisher@googlegroups.com</b> with role <b>Pub/Sub Publisher</b>.</li>
+          <li>In <a data-open href="https://console.nest.google.com/device-access">Device Access</a>, open your project → <b>Pub/Sub topic</b> → paste <b>projects/YOUR-CLOUD-PROJECT/topics/nest-events</b> and turn events on.</li>
+          <li>Paste the subscription name below (Pub/Sub → Subscriptions, looks like <b>projects/…/subscriptions/nest-events-sub</b>), then tap <b>Sign in again</b> above so House may read it.</li>
+        </ol>
+        <label class="fld">Subscription<input class="field" id="nestSub" autocomplete="off" placeholder="projects/devicesnestdoorbell/subscriptions/nest-events-sub"></label>
+        <div class="list"><button class="ghost center" id="nestSubTest">Save and test</button></div>
+        <p class="note err" id="nestNotif" hidden>Notifications are off for House: turn them on in your phone's Settings → Apps → House.</p>
+      </div>
       <div class="label">Units</div>
       <div class="card glass"><div class="seg3" id="nestUnit" style="--n:2"><button data-unit="C">°C</button><button data-unit="F">°F</button></div></div>`,
     guide: [
@@ -305,7 +384,7 @@
         if (!c.project || !c.clientId || !c.secret) { toast("Fill in all three first", true); return; }
         const url = `https://nestservices.google.com/partnerconnections/${encodeURIComponent(c.project)}/auth?` + new URLSearchParams({
           redirect_uri: REDIRECT, access_type: "offline", prompt: "consent", client_id: c.clientId, response_type: "code",
-          scope: "https://www.googleapis.com/auth/sdm.service",
+          scope: "https://www.googleapis.com/auth/sdm.service https://www.googleapis.com/auth/pubsub",
         });
         openLink(url);
       };
@@ -318,8 +397,35 @@
       };
       $("nestOut").onclick = () => { if (!confirm("Sign out of Nest on this phone?")) return; tok = null; devices = []; store.set("nest.tok", null); paint(); };
       $("nestUnit").onclick = (e) => { const b = e.target.closest("[data-unit]"); if (b) { store.set("nest.unit", b.dataset.unit); paint(); } };
+      const flip = (key, on, off) => { buzz(); watch.settings = { ...watch.settings, [key]: !watch.settings?.[key] }; saveAlerts(watch.settings[key] ? on : off); };
+      $("nestHumOn").onclick = () => flip("humOn", "Humidity alert on", "Humidity alert off");
+      $("nestRingOn").onclick = () => { if (!store.get("nest.sub")) { toast("Set up the subscription below first", true); return; } flip("ring", "Ring alerts on", "Ring alerts off"); };
+      $("nestMotionOn").onclick = () => { if (!store.get("nest.sub")) { toast("Set up the subscription below first", true); return; } flip("motion", "Person and motion alerts on", "Person and motion alerts off"); };
+      const limits = () => {
+        const low = Math.max(10, Math.min(60, +$("nestHumLow").value || 30)), high = Math.max(low + 5, Math.min(90, +$("nestHumHigh").value || 60));
+        watch.settings = { ...watch.settings, humLow: low, humHigh: high };
+        saveAlerts(`Alert below ${low}% or above ${high}%`);
+      };
+      $("nestHumLow").onchange = limits;
+      $("nestHumHigh").onchange = limits;
+      $("nestSubTest").onclick = async () => {
+        const sub = $("nestSub").value.trim();
+        if (!/^projects\/[^/]+\/subscriptions\/[^/]+$/.test(sub)) { toast("It should look like projects/…/subscriptions/…", true); return; }
+        store.set("nest.sub", sub);
+        await new Promise((r) => setTimeout(r, 600)); // let the subscription reach the background side
+        try {
+          const r = await Net.nestTestEvents();
+          toast(r.events ? `Works: ${r.events} event${r.events === 1 ? "" : "s"} were waiting` : "Works: no events waiting right now. Ring the doorbell to try it.");
+        } catch (e) {
+          toast(/permission|scope|insufficient/i.test(e.message) ? "Google says House may not read it yet: tap Sign in again above" : e.message, true);
+        }
+      };
+      Net.getNestWatch().then((w) => { watch = w; history = w.history || []; paintAlerts(); paintHistory(); }).catch(() => {});
       paint();
     },
-    onShow(tab) { if (tab !== "settings") load(); else paint(); },
+    onShow(tab) {
+      if (tab !== "settings") load(); else { paint(); paintAlerts(); }
+      if (tab === "thermo" && tok?.refresh) Net.nestTick().then((w) => { history = w.history || []; paintHistory(); }).catch(() => {});
+    },
   });
 })();

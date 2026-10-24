@@ -28,6 +28,7 @@ public class LightsPlugin extends Plugin {
         Bedtime.schedule(getContext());
         SceneTimers.schedule(getContext());
         Presence.register(getContext());
+        NestWatch.schedule(getContext());
         // The app was opened: check home/away now instead of waiting for the next background check.
         new Thread(() -> Presence.evaluate(getContext())).start();
     }
@@ -98,6 +99,7 @@ public class LightsPlugin extends Plugin {
                 c.put("wyzeRefreshFrom", old.optString("wyzeRefreshFrom"));
             }
             HouseActions.saveCreds(getContext(), c);
+            NestWatch.schedule(getContext());
         }
         call.resolve();
     }
