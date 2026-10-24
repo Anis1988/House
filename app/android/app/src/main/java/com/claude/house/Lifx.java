@@ -489,9 +489,10 @@ final class Lifx {
      * Runs one of your own scenes: { lights: { <bulb id>: { mode: "on"|"off", bri: 1-100,
      * kelvin?, hue?: 0-360, sat?: 0-100 } } }. Bulbs not listed are left as they are.
      */
-    static void runCustom(Context ctx, JSONObject scene, int fadeMs) {
+    /** Returns false when the scene had lights to set and none of them answered. */
+    static boolean runCustom(Context ctx, JSONObject scene, int fadeMs) {
         JSONObject wanted = scene.optJSONObject("lights");
-        if (wanted == null) return;
+        if (wanted == null) return true;
         int dur = fadeMs > 0 ? fadeMs : 800;
         Map<String, Light> lights = cached(ctx);
         List<Cmd> colors = new ArrayList<>(), ons = new ArrayList<>(), offs = new ArrayList<>();
@@ -519,9 +520,12 @@ final class Lifx {
             l.on = true;
         }
         save(ctx, lights);
-        if (!colors.isEmpty()) sendAll(ctx, colors, false, 0, null);
+        int sent = colors.size() + offs.size(), acked = 0;
+        if (!colors.isEmpty()) acked += sendAll(ctx, colors, false, 0, null);
         if (!ons.isEmpty()) sendAll(ctx, ons, false, 0, null);
-        if (!offs.isEmpty()) sendAll(ctx, offs, false, 0, null);
+        if (!offs.isEmpty()) acked += sendAll(ctx, offs, false, 0, null);
+        // Nothing sent although the scene sets lights = no bulbs known yet: that counts as not reached.
+        return sent > 0 ? acked > 0 : wanted.length() == 0;
     }
 
     static int pct(int percent) {

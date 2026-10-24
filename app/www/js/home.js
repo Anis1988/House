@@ -416,6 +416,14 @@
     scenesHtml: SCENES_HTML,
     timersHtml: TIMERS_HTML,
     settingsHtml: `
+      <div class="label">When you're away</div>
+      <div class="card glass">
+        <p class="note" style="margin-top:0">Away from your Wi-Fi, the phone can't reach the bulbs directly. With a LIFX cloud token, scenes and timers still work then (like everyone left → lights off).</p>
+        <ol class="steps"><li>Open <a data-open href="https://cloud.lifx.com/settings">cloud.lifx.com</a> and sign in with your LIFX account.</li><li>Generate a <b>personal access token</b> and paste it here.</li></ol>
+        <label class="fld">LIFX cloud token<input class="field" id="lifxToken" type="password" autocomplete="off"></label>
+        <div class="list"><button class="primary full" id="lifxTokenSave">Save and test</button></div>
+        <p class="note" id="lifxTokenNote"></p>
+      </div>
       <div class="label">Location</div>
       <div class="card glass">
         <div class="row"><input class="field" id="homeCity" placeholder="Your city" autocomplete="address-level2"><button class="primary" id="homeCityBtn">Set</button></div>
@@ -458,6 +466,21 @@
       document.addEventListener("change", (e) => { if (e.target.matches("[data-bed-time]")) saveBedtime(true, e.target.value); });
       $("homeCityBtn").onclick = findCity;
       $("homeCity").onkeydown = (e) => { if (e.key === "Enter") findCity(); };
+      const tokenNote = () => ($("lifxTokenNote").textContent = store.get("lifx.token") ? "Token saved on this phone. Away scenes use the LIFX cloud." : "");
+      tokenNote();
+      $("lifxTokenSave").onclick = async () => {
+        const t = $("lifxToken").value.trim();
+        if (!t) { store.set("lifx.token", null); tokenNote(); toast("LIFX cloud token removed"); return; }
+        try {
+          const r = await fetch("https://api.lifx.com/v1/lights/all", { headers: { Authorization: `Bearer ${t}` } });
+          if (!r.ok) throw new Error(r.status === 401 ? "LIFX didn't accept that token" : `LIFX cloud error ${r.status}`);
+          const ls = await r.json();
+          store.set("lifx.token", t);
+          $("lifxToken").value = "";
+          tokenNote();
+          toast(`LIFX cloud works: ${ls.length} light${ls.length === 1 ? "" : "s"}`);
+        } catch (e) { toast(e.message || "Couldn't reach the LIFX cloud", true); }
+      };
       $("homeRestore").onclick = async () => {
         buzz();
         try { scenes = (await Lights.restoreScenes()).scenes || []; renderScenes(); renderTimers(); toast("Built-in scenes are back"); }

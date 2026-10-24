@@ -102,8 +102,22 @@ final class SceneTimers {
 
     /** Runs a whole house scene: lights first, then the other devices. Blocking. Returns what failed. */
     static List<String> runScene(Context ctx, JSONObject scene, int fadeMs) {
-        if (scene.optJSONObject("lights") != null) Lifx.runCustom(ctx, scene, fadeMs);
-        return HouseActions.run(ctx, scene);
+        List<String> failed = new ArrayList<>();
+        if (scene.optJSONObject("lights") != null) {
+            // Away from the home Wi-Fi the bulbs can't be reached directly: use the LIFX cloud if set up.
+            String token = HouseActions.creds(ctx).optString("lifxToken");
+            if (!Presence.atHome(ctx) && !token.isEmpty()) {
+                try {
+                    LifxCloud.run(token, scene, fadeMs);
+                } catch (Exception e) {
+                    failed.add("Lights");
+                }
+            } else if (!Lifx.runCustom(ctx, scene, fadeMs)) {
+                failed.add("Lights");
+            }
+        }
+        failed.addAll(HouseActions.run(ctx, scene));
+        return failed;
     }
 
     /** Runs a scene by its timer name: "custom:<id>", or an older timer's built-in name. */

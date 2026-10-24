@@ -63,6 +63,7 @@ final class WifiWatch {
     static void save(Context ctx, JSONObject s) {
         prefs(ctx).edit().putString("watch", s.toString()).apply();
         schedule(ctx);
+        Presence.register(ctx);
     }
 
     private static boolean wanted(Context ctx) {
@@ -146,7 +147,9 @@ final class WifiWatch {
     /** One check: alerts for new devices, then who's home and the arrive/leave scenes. Blocking. */
     static void check(Context ctx) {
         if (!wanted(ctx)) return;
-        if (Lifx.subnet(ctx).isEmpty()) return; // away from home Wi-Fi: don't mark anyone gone
+        // Only the home Wi-Fi shows who's there. Away (or on mobile data), this phone's own
+        // presence comes from Presence; the others can't be seen, so leave them as they were.
+        if (!Presence.atHome(ctx)) return;
         Map<String, JSONObject> now = online(ctx);
         if (now.isEmpty()) return;
         JSONObject s = settings(ctx);
@@ -187,11 +190,12 @@ final class WifiWatch {
         JSONArray people = s.optJSONArray("people");
         if (people == null || people.length() == 0) return;
         JSONObject state = presence(ctx);
-        boolean someoneArrived = false, someoneLeft = false, anyoneHome = false;
+        boolean someoneArrived = false, someoneLeft = false;
         try {
             for (int i = 0; i < people.length(); i++) {
                 JSONObject p = people.getJSONObject(i);
                 String key = p.optString("key").toLowerCase();
+                if (Presence.KEY.equals(key)) continue; // this phone: told right away by Android (Presence)
                 JSONObject st = state.optJSONObject(key);
                 if (st == null) st = new JSONObject().put("home", false).put("misses", 0);
                 boolean seen = now.containsKey(key);
@@ -205,14 +209,56 @@ final class WifiWatch {
                     st.put("misses", misses);
                     if (wasHome && misses >= 2) { st.put("home", false).put("since", System.currentTimeMillis()); someoneLeft = true; }
                 }
-                if (st.optBoolean("home")) anyoneHome = true;
                 state.put(key, st);
             }
         } catch (JSONException ignored) {}
         prefs(ctx).edit().putString("presence", state.toString()).apply();
-        String arrive = s.optString("arrive"), leave = s.optString("leave");
-        if (someoneArrived && !arrive.isEmpty()) SceneTimers.run(ctx, arrive, 0);
-        if (someoneLeft && !anyoneHome && !leave.isEmpty()) SceneTimers.run(ctx, leave, 0);
+        if (someoneArrived) arrived(ctx);
+        if (someoneLeft) left(ctx);
+    }
+
+    private static boolean anyoneHome(Context ctx) {
+        JSONObject state = presence(ctx);
+        JSONArray people = settings(ctx).optJSONArray("people");
+        for (int i = 0; people != null && i < people.length(); i++) {
+            JSONObject st = state.optJSONObject(people.optJSONObject(i).optString("key").toLowerCase());
+            if (st != null && st.optBoolean("home")) return true;
+        }
+        return false;
+    }
+
+    /** Someone got home: run the arrive scene. */
+    static void arrived(Context ctx) {
+        String arrive = settings(ctx).optString("arrive");
+        if (arrive.isEmpty()) return;
+        List<String> failed = runFor(ctx, arrive);
+        if (!failed.isEmpty()) notify(ctx, 22, "Welcome home", "Couldn't reach: " + String.join(", ", failed));
+    }
+
+    /** Someone left: when no one is home any more, run the leave scene. */
+    static void left(Context ctx) {
+        String leave = settings(ctx).optString("leave");
+        if (leave.isEmpty() || anyoneHome(ctx)) return;
+        List<String> failed = runFor(ctx, leave);
+        boolean noCloud = HouseActions.creds(ctx).optString("lifxToken").isEmpty();
+        if (failed.contains("Lights") && noCloud && !Presence.atHome(ctx)) {
+            notify(ctx, 23, "Everyone left, but the lights didn't change",
+                "Your phone isn't on the home Wi-Fi, so it can't reach the bulbs. Add a LIFX cloud token in Lights → Settings so this works when you're away.");
+        } else if (!failed.isEmpty()) {
+            notify(ctx, 23, "Everyone left", "Couldn't reach: " + String.join(", ", failed));
+        } else {
+            notify(ctx, 23, "Everyone left", "Ran your leave scene.");
+        }
+    }
+
+    private static List<String> runFor(Context ctx, String which) {
+        String id = which.startsWith("custom:") ? which.substring(7) : which;
+        JSONObject scene = null;
+        JSONArray all = SceneTimers.scenes(ctx);
+        for (int i = 0; i < all.length(); i++) if (id.equals(all.optJSONObject(i).optString("id"))) scene = all.optJSONObject(i);
+        if (scene == null) return new ArrayList<>();
+        if (Presence.atHome(ctx)) Lifx.scan(ctx, 1500, null); // fresh bulb addresses first
+        return SceneTimers.runScene(ctx, scene, 0);
     }
 
     private static void notify(Context ctx, int id, String title, String text) {

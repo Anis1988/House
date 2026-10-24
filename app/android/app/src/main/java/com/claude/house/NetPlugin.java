@@ -433,6 +433,34 @@ public class NetPlugin extends Plugin {
         getWatch(call);
     }
 
+    /**
+     * { name } adds the phone running the app to Who's home. Must be on the home Wi-Fi: that Wi-Fi
+     * is remembered as home, and Android then reports leaving and arriving right away.
+     */
+    @PluginMethod
+    public void addThisPhone(PluginCall call) {
+        String name = call.getString("name", "Me");
+        if (!Presence.rememberHome(getContext())) {
+            call.reject("Connect this phone to your home Wi-Fi first");
+            return;
+        }
+        try {
+            org.json.JSONObject s = WifiWatch.settings(getContext());
+            org.json.JSONArray people = s.optJSONArray("people");
+            org.json.JSONArray next = new org.json.JSONArray();
+            for (int i = 0; people != null && i < people.length(); i++) {
+                if (!Presence.KEY.equals(people.getJSONObject(i).optString("key"))) next.put(people.getJSONObject(i));
+            }
+            next.put(new org.json.JSONObject().put("key", Presence.KEY).put("name", name));
+            s.put("people", next);
+            WifiWatch.save(getContext(), s);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+            return;
+        }
+        getWatch(call);
+    }
+
     /** Runs one check now (who's home, new devices) and returns the result. */
     @PluginMethod
     public void checkWatch(PluginCall call) {

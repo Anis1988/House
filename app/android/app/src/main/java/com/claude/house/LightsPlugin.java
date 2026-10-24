@@ -27,6 +27,7 @@ public class LightsPlugin extends Plugin {
     public void load() {
         Bedtime.schedule(getContext());
         SceneTimers.schedule(getContext());
+        Presence.register(getContext());
     }
 
     // ---- Your own scenes and scene timers ----
@@ -249,6 +250,7 @@ public class LightsPlugin extends Plugin {
         "https://console.cloud.google.com/",
         "https://developers.google.com/nest/",
         "https://developer-api-console.wyze.com/",
+        "https://cloud.lifx.com/",
     };
 
     /** Opens a link in the browser; only the links above. */

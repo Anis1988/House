@@ -131,6 +131,7 @@
         return { ...d, maker, kind, kindName, label: own[(d.mac || "").toLowerCase()] || own[d.ip] || d.name || (maker && !maker.startsWith("Private") ? `${maker} device` : kindName === "Device" ? "Unknown device" : kindName) };
       }).sort((a, b) => (b.online - a.online) || ipNum(a.ip) - ipNum(b.ip));
       store.setJson("wifi.last", devices);
+      scannedAt = Date.now();
       if (manual) toast(`${devices.filter((d) => d.online).length} devices on your Wi-Fi`);
     } catch (e) { toast(e.message || "Couldn't scan the network", true); }
     busy = false;
@@ -167,12 +168,16 @@
   let watch = { settings: {}, presence: {}, notifications: true };
   const people = () => watch.settings.people || [];
   const personOf = (d) => people().find((p) => p.key === ((d.mac || "").toLowerCase() || d.ip));
-  // Home if this scan sees their phone; otherwise what the background check last decided.
+  // This phone: what Android reported (instant). Others: home if a scan from the last few minutes
+  // sees their phone, otherwise what the background check last decided. An old list never counts.
+  let scannedAt = 0;
   function isHome(p) {
-    const d = devices.find((x) => ((x.mac || "").toLowerCase() || x.ip) === p.key || x.ip === p.key);
-    if (d?.online) return { home: true, since: watch.presence[p.key]?.since };
     const st = watch.presence[p.key];
-    return { home: !!st?.home && !d, since: st?.since };
+    if (p.key === "this-phone") return { home: !!st?.home, since: st?.since, instant: true };
+    const fresh = Date.now() - scannedAt < 5 * 60e3;
+    const d = fresh && devices.find((x) => ((x.mac || "").toLowerCase() || x.ip) === p.key || x.ip === p.key);
+    if (d?.online) return { home: true, since: st?.since };
+    return { home: !!st?.home, since: st?.since };
   }
   const ago = (ts) => { if (!ts) return ""; const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
   function paintHome() {
@@ -196,7 +201,8 @@
     const s = watch.settings;
     $("wfAlerts").classList.toggle("on", !!s.alerts);
     $("wfNotifNote").hidden = !s.alerts || watch.notifications;
-    $("wfPeople").innerHTML = people().length ? people().map((p) => `<div class="set-row"><div class="set-text"><b>${esc(p.name)}</b><span>${esc(p.key)}</span></div><button class="ghost center auto danger" data-unperson="${esc(p.key)}">Remove</button></div>`).join("")
+    $("wfThisPhone").hidden = people().some((p) => p.key === "this-phone");
+    $("wfPeople").innerHTML = people().length ? people().map((p) => `<div class="set-row"><div class="set-text"><b>${esc(p.name)}</b><span>${p.key === "this-phone" ? "This phone · updates right away" : esc(p.key) + " · checked every 15 min"}</span></div><button class="ghost center auto danger" data-unperson="${esc(p.key)}">Remove</button></div>`).join("")
       : `<p class="note" style="margin:0">No one yet. On the Devices tab, tap someone's phone and choose “This is a person's phone”.</p>`;
     const sc = await scenesList();
     const opts = (val) => `<option value="">Nothing</option>` + sc.map((x) => `<option value="custom:${esc(x.id)}" ${val === `custom:${x.id}` ? "selected" : ""}>${esc(x.name)}</option>`).join("");
@@ -328,9 +334,14 @@
       <div class="label">Who's home</div>
       <div class="card glass">
         <div id="wfPeople"></div>
+        <div id="wfThisPhone">
+          <label class="fld">Add this phone (whose is it?)<input class="field" id="wfMeName" placeholder="Anis"></label>
+          <div class="list"><button class="primary full" id="wfMeAdd">Add this phone</button></div>
+          <p class="note">This phone knows the moment it leaves or joins your Wi-Fi, so it updates right away (away after 2 minutes off the Wi-Fi). Do this while connected to your home Wi-Fi.</p>
+        </div>
         <label class="fld">When someone gets home, run<select class="field" id="wfArrive"></select></label>
         <label class="fld">When everyone has left, run<select class="field" id="wfLeave"></select></label>
-        <p class="note">Checked about every 15 min, so it can take a little while. Someone counts as gone after their phone is missing twice in a row. Phones with “private Wi-Fi address” turned off for this network are recognised more reliably.</p>
+        <p class="note">Checked about every 15 min, so it can take a little while. Someone counts as gone after their phone is missing twice in a row. Phones with “private Wi-Fi address” turned off for this network are recognised more reliably. Lights can only be reached from the home Wi-Fi: for a leave scene, add a LIFX cloud token in Lights → Settings.</p>
       </div>
       <div class="label">Router (ASUS)</div>
       <div class="card glass">
@@ -380,6 +391,13 @@
         toast(v ? `Will scan ${v}.1 – 254` : "Will scan your phone's network");
       };
       $("wfNames").onclick =() => { if (!confirm("Clear all your device names?")) return; store.set("wifi.names", null); load(); };
+      $("wfMeAdd").onclick = async () => {
+        const name = $("wfMeName").value.trim();
+        if (!name) { toast("Type whose phone this is", true); return; }
+        buzz();
+        try { watch = await Net.addThisPhone({ name }); $("wfMeName").value = ""; toast(`${name} added: updates right away`); paint(); }
+        catch (e) { toast(e.message || "Couldn't add this phone", true); }
+      };
       $("wfAlerts").onclick = () => { buzz(); watch.settings.alerts = !watch.settings.alerts; saveWatch(watch.settings.alerts ? "New device alert on" : "New device alert off"); };
       $("wfPeople").addEventListener("click", (e) => {
         const b = e.target.closest("[data-unperson]");
