@@ -168,7 +168,19 @@ const House = {
     setInterval(() => this._checkForUpdate(false), 6 * 60 * 60 * 1000);
   },
 
+  // Fade the row's edges where more chips are hidden, so it's clear the row scrolls.
+  _edges() {
+    const sw = $("switch");
+    sw.classList.toggle("more-left", sw.scrollLeft > 4);
+    sw.classList.toggle("more-right", sw.scrollLeft + sw.clientWidth < sw.scrollWidth - 4);
+  },
+
   _buildSwitch() {
+    if (!this._edgeWatch) {
+      this._edgeWatch = true;
+      $("switch").addEventListener("scroll", () => this._edges(), { passive: true });
+      addEventListener("resize", () => this._edges());
+    }
     const vis = this.visible();
     $("switch").innerHTML = vis.map((s) => `<button class="chip-side" role="tab" data-side="${s.id}">${svg(s.icon)}${esc(s.short || s.name)}</button>`).join("");
     $("switch").hidden = vis.length < 2;
@@ -177,7 +189,10 @@ const House = {
   },
   _markSwitch() {
     $("switch").querySelectorAll("[data-side]").forEach((b) => b.classList.toggle("on", b.dataset.side === this.current));
-    $("switch").querySelector(".on")?.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
+    // Keep the chosen chip in the middle, so the chips on both sides stay in view.
+    const sw = $("switch"), on = sw.querySelector(".on");
+    if (on) sw.scrollTo({ left: on.offsetLeft - sw.offsetLeft - (sw.clientWidth - on.offsetWidth) / 2, behavior: "smooth" });
+    this._edges();
   },
 
   /** Switch device: colours, logo, bottom tabs and pages all change, like opening another app. */

@@ -113,7 +113,9 @@ body.dim .aurora { opacity: .35; }
 /* Header: side logo, device switch, guide */
 header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .logo { width: 42px; height: 42px; border-radius: 14px; flex: none; display: grid; place-items: center; color: #fff; background: var(--grad); box-shadow: 0 6px 24px color-mix(in srgb, var(--a1) 40%, transparent), inset 0 1px 0 rgba(255,255,255,.4); transition: background .5s; }
-.switch { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 3px; margin: -3px; scroll-snap-type: x proximity; }
+.switch { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 3px; margin: -3px; --fl: #000; --fr: #000; mask-image: linear-gradient(90deg, var(--fl), #000 28px, #000 calc(100% - 28px), var(--fr)); -webkit-mask-image: linear-gradient(90deg, var(--fl), #000 28px, #000 calc(100% - 28px), var(--fr)); }
+.switch.more-left { --fl: transparent; }
+.switch.more-right { --fr: transparent; }
 .switch::-webkit-scrollbar { display: none; }
 .chip-side { flex: none; display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 13px 0 10px; border-radius: 20px; font-size: 13.5px; font-weight: 700; color: var(--muted); background: var(--glass); border: 1px solid var(--edge); scroll-snap-align: start; transition: all .25s; }
 .chip-side svg { width: 18px; height: 18px; }
