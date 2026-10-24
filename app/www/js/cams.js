@@ -10,9 +10,12 @@
   const SC_SV = {
     default: { sc: "9f275790cab94a72bd206c8876429f3c", sv: "e1fe392906d54888a9b99b88de4162d7" },
     run_action: { sc: "01dd431d098546f9baf5233724fa2ee2", sv: "2c0edc06d4c5465b8c55af207144f0d9" },
+    events: { sc: "9f275790cab94a72bd206c8876429f3c", sv: "782ced6909a44d92a1f70d582bbe88be" },
   };
   let acct = store.json("wyze.acct", null); // { access, refresh, email }
   let cams = [];
+  let events = [];     // recent motion/sound events, newest first
+  let loadingEvents = false;
   let busy = false;
   let mfa = null; // pending two-step sign-in
   const phoneId = store.get("wyze.phone") || (() => { const id = crypto.randomUUID?.() || String(Math.random()).slice(2); store.set("wyze.phone", id); return id; })();
@@ -102,6 +105,43 @@
     } catch (e) { cam.on = !on; paint(); toast(e.message, true); }
   }
 
+  /* Recent events (motion, sound, person…) with their snapshot, from the last two days */
+  const TAGS = { 101: "Person", 102: "Vehicle", 103: "Pet", 104: "Package", 105: "Baby crying", 106: "Dog barking", 107: "Cat meowing" };
+  const KIND = { 1: "Motion", 2: "Sound", 4: "Smoke alarm", 5: "CO alarm", 13: "Motion", 10: "Doorbell" };
+  async function loadEvents(manual) {
+    if (!acct || loadingEvents) { paintEvents(); return; }
+    if (!cams.length) await load();
+    loadingEvents = true;
+    $("wyEvRefresh").classList.add("spin");
+    paintEvents();
+    try {
+      const data = await call("/v2/device/get_event_list", {
+        device_mac_list: cams.map((c) => c.mac), event_value_list: [], event_tag_list: [], event_type: "",
+        begin_time: Date.now() - 2 * 864e5, end_time: Date.now(), count: 40, order_by: 2,
+      }, "events");
+      events = (data.event_list || []).map((e) => ({
+        id: e.event_id, mac: e.device_mac, at: +e.event_ts,
+        what: (e.tag_list || []).map((t) => TAGS[t]).filter(Boolean)[0] || KIND[+e.event_value] || "Event",
+        img: (e.file_list || []).find((f) => +f.type === 1)?.url || "",
+      })).sort((a, b) => b.at - a.at);
+      if (manual) toast(events.length ? `${events.length} events in the last two days` : "No events in the last two days");
+    } catch (e) { toast(e.message, true); }
+    loadingEvents = false;
+    $("wyEvRefresh").classList.remove("spin");
+    paintEvents();
+  }
+  function paintEvents() {
+    const box = $("wyEvents");
+    if (!acct) { box.innerHTML = `<div class="card glass"><p class="note" style="margin:0">Sign in to Wyze in Settings to see events.</p></div>`; return; }
+    if (!events.length) { box.innerHTML = `<div class="card glass"><p class="note" style="margin:0">${loadingEvents ? "Loading events…" : "No events in the last two days."}</p></div>`; return; }
+    const name = (mac) => cams.find((c) => c.mac === mac)?.name || mac;
+    box.innerHTML = events.map((e, i) => `
+      <button class="event glass" data-ev="${i}">
+        <span class="th">${e.img ? `<img alt="" loading="lazy" src="${esc(e.img)}">` : svg("cam")}</span>
+        <span class="t"><b>${esc(e.what)} · ${esc(name(e.mac))}</b><span>${new Date(e.at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })} · ${ago(e.at)}</span></span>
+      </button>`).join("");
+  }
+
   const ago = (ts) => { if (!ts) return ""; const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
   function paint() {
     const box = $("wyCams");
@@ -133,6 +173,7 @@
     id: "cams", name: "Wyze cameras", short: "Cameras", icon: "cam", blurb: "Snapshots and on/off (Wyze)",
     tabs: [
       { id: "cams", label: "Cameras", icon: "cam", html: `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="round-btn glass" id="wyRefresh" aria-label="Refresh">${svg("refresh")}</button></div><div class="cams" id="wyCams"></div>` },
+      { id: "events", label: "Events", icon: "bell", html: `<div class="row" style="justify-content:space-between;margin-bottom:8px"><div class="label" style="margin:0 0 0 4px">Last two days</div><button class="round-btn glass" id="wyEvRefresh" aria-label="Refresh">${svg("refresh")}</button></div><div class="events" id="wyEvents"></div>` },
       { id: "settings", label: "Settings", icon: "gear" },
     ],
     settingsHtml: `
@@ -155,17 +196,26 @@
     guide: [
       ["cam", "Cameras", "Each camera shows its latest snapshot, whether it's online, and a switch to turn it on or off (privacy mode)."],
       ["key", "Setting up", "Wyze needs your account and a free API key from Wyze's developer console. Settings shows where to get it."],
+      ["bell", "Events", "The Events tab lists motion, sound and person alerts from the last two days with their snapshot. Tap one to see it bigger."],
       ["clock", "Live video", "Live video isn't possible here yet; use the Wyze app for that."],
     ],
     mount() {
       document.addEventListener("click", (e) => { if (e.target.closest("[data-wy-settings]")) House.showTab("settings"); });
       $("wyRefresh").onclick = () => { buzz(6); load(true); };
+      $("wyEvRefresh").onclick = () => { buzz(6); loadEvents(true); };
+      $("wyEvents").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-ev]");
+        if (!b) return;
+        const ev = events[+b.dataset.ev];
+        const cam = cams.find((c) => c.mac === ev.mac);
+        House.sheet(`<h3>${esc(ev.what)}</h3><div class="sub">${esc(cam?.name || ev.mac)} · ${new Date(ev.at).toLocaleString()}</div>${ev.img ? `<img class="shot-full" alt="" src="${esc(ev.img)}">` : `<p class="note">No snapshot for this event.</p>`}`);
+      });
       $("wyCams").addEventListener("click", (e) => { const t = e.target.closest("[data-cam]"); if (t) { const c = cams.find((x) => x.mac === t.dataset.cam); power(c, !c.on); } });
       $("wySignIn").onclick = signIn;
       $("wyOut").onclick = () => { if (!confirm("Sign out of Wyze on this phone?")) return; acct = null; cams = []; store.set("wyze.acct", null); paint(); };
       paint();
     },
-    onShow(tab) { if (tab === "cams") load(); else paint(); },
+    onShow(tab) { if (tab === "cams") load(); else if (tab === "events") loadEvents(); else paint(); },
     known: () => cams.filter((c) => c.ip).map((c) => ({ ip: c.ip, mac: c.mac.match(/../g)?.join(":"), name: c.name, type: "cam", hint: `Wyze ${c.model}`, online: c.online })),
   });
 })();

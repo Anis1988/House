@@ -1,0 +1,236 @@
+package com.claude.house;
+
+import android.app.AlarmManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.util.Base64;
+import android.util.Log;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+/**
+ * Background Wi-Fi check every ~15 minutes (only while it's turned on):
+ * - New device alert: a notification when a device not seen before joins.
+ * - Who's home: phones marked as people; when someone arrives, or the last person leaves,
+ *   a scene can run. Someone counts as gone after two checks in a row without their phone,
+ *   because sleeping phones skip a check now and then.
+ * With the router signed in, devices are known by MAC (reliable); otherwise by address.
+ *
+ * Settings ("watch" in prefs): { alerts, people: [{ key, name }], arrive: "custom:<id>", leave: "custom:<id>" }
+ */
+final class WifiWatch {
+    static final String ACTION = "com.claude.house.WIFI_CHECK";
+    private static final String TAG = "WifiWatch";
+    private static final String CHANNEL = "wifi";
+    private static final String UA = "asusrouter-Android-DUTUtil-1.0.0.245";
+
+    private WifiWatch() {}
+
+    private static SharedPreferences prefs(Context ctx) {
+        return ctx.getSharedPreferences(Lifx.PREFS, Context.MODE_PRIVATE);
+    }
+
+    static JSONObject settings(Context ctx) { return obj(ctx, "watch"); }
+    static JSONObject presence(Context ctx) { return obj(ctx, "presence"); }
+
+    private static JSONObject obj(Context ctx, String key) {
+        try {
+            return new JSONObject(prefs(ctx).getString(key, "{}"));
+        } catch (JSONException e) {
+            return new JSONObject();
+        }
+    }
+
+    static void save(Context ctx, JSONObject s) {
+        prefs(ctx).edit().putString("watch", s.toString()).apply();
+        schedule(ctx);
+    }
+
+    private static boolean wanted(Context ctx) {
+        JSONObject s = settings(ctx);
+        JSONArray people = s.optJSONArray("people");
+        return s.optBoolean("alerts") || (people != null && people.length() > 0);
+    }
+
+    private static PendingIntent intent(Context ctx) {
+        Intent i = new Intent(ctx, ActionReceiver.class).setAction(ACTION);
+        return PendingIntent.getBroadcast(ctx, 4, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** Inexact on purpose: Android batches it with other wake-ups, so it costs little battery. */
+    static void schedule(Context ctx) {
+        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        PendingIntent pi = intent(ctx);
+        am.cancel(pi);
+        if (!wanted(ctx)) return;
+        am.setInexactRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + AlarmManager.INTERVAL_FIFTEEN_MINUTES,
+            AlarmManager.INTERVAL_FIFTEEN_MINUTES, pi);
+    }
+
+    /** What's on the network now: key (MAC, or address without the router) → { name, ip }. Blocking. */
+    static Map<String, JSONObject> online(Context ctx) {
+        Map<String, JSONObject> out = new HashMap<>();
+        JSONObject c = HouseActions.creds(ctx);
+        if (!c.optString("routerPass").isEmpty()) {
+            try {
+                for (JSONObject d : routerClients(ctx, c)) if (d.optBoolean("online")) out.put(d.optString("mac").toLowerCase(), d);
+                return out;
+            } catch (Exception e) {
+                Log.w(TAG, "router", e);
+            }
+        }
+        String subnet = c.optString("scanRange");
+        if (subnet.isEmpty()) subnet = Lifx.subnet(ctx);
+        if (subnet.isEmpty()) return out; // not on Wi-Fi: nothing to say
+        for (String ip : LanNet.sweep(subnet).keySet()) {
+            try {
+                out.put(ip, new JSONObject().put("ip", ip));
+            } catch (JSONException ignored) {}
+        }
+        return out;
+    }
+
+    private static List<JSONObject> routerClients(Context ctx, JSONObject c) throws Exception {
+        String addr = c.optString("routerAddr");
+        if (addr.isEmpty()) {
+            String subnet = Lifx.subnet(ctx);
+            addr = subnet.isEmpty() ? "192.168.50.1" : subnet + ".1";
+        }
+        String base = addr.startsWith("http") ? addr : "http://" + addr;
+        OkHttpClient http = LanNet.client().newBuilder().readTimeout(10, TimeUnit.SECONDS).build();
+        String auth = Base64.encodeToString((c.optString("routerUser", "admin") + ":" + c.optString("routerPass")).getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+        String token;
+        try (Response r = http.newCall(new Request.Builder().url(base + "/login.cgi").header("User-Agent", UA)
+            .post(RequestBody.create("login_authorization=" + auth, MediaType.get("application/x-www-form-urlencoded"))).build()).execute()) {
+            token = new JSONObject(r.body().string()).optString("asus_token");
+        }
+        if (token.isEmpty()) throw new Exception("Router sign-in failed");
+        JSONObject list;
+        try (Response r = http.newCall(new Request.Builder().url(base + "/appGet.cgi?hook=get_clientlist()")
+            .header("User-Agent", UA).header("Cookie", "asus_token=" + token).header("Referer", base + "/index.asp").build()).execute()) {
+            list = new JSONObject(r.body().string()).optJSONObject("get_clientlist");
+        }
+        List<JSONObject> out = new ArrayList<>();
+        if (list == null) return out;
+        for (Iterator<String> it = list.keys(); it.hasNext(); ) {
+            String mac = it.next();
+            JSONObject d = list.optJSONObject(mac);
+            if (d == null || !mac.matches("(?i)[0-9a-f]{2}(:[0-9a-f]{2}){5}")) continue;
+            String name = d.optString("nickName");
+            if (name.isEmpty()) name = d.optString("name");
+            out.add(new JSONObject().put("mac", mac).put("ip", d.optString("ip")).put("name", name)
+                .put("vendor", d.optString("vendor")).put("online", "1".equals(d.optString("isOnline"))));
+        }
+        return out;
+    }
+
+    /** One check: alerts for new devices, then who's home and the arrive/leave scenes. Blocking. */
+    static void check(Context ctx) {
+        if (!wanted(ctx)) return;
+        if (Lifx.subnet(ctx).isEmpty()) return; // away from home Wi-Fi: don't mark anyone gone
+        Map<String, JSONObject> now = online(ctx);
+        if (now.isEmpty()) return;
+        JSONObject s = settings(ctx);
+        newDevices(ctx, s, now);
+        presence(ctx, s, now);
+    }
+
+    // A scan can miss a sleepy device, so: learn quietly for the first hour (4 checks), and only
+    // call a device new once it has shown up in two checks in a row.
+    private static final int LEARN_CHECKS = 4;
+
+    private static void newDevices(Context ctx, JSONObject s, Map<String, JSONObject> now) {
+        Set<String> known = new HashSet<>(prefs(ctx).getStringSet("knownDevices", new HashSet<>()));
+        Set<String> pending = new HashSet<>(prefs(ctx).getStringSet("pendingDevices", new HashSet<>()));
+        int learned = prefs(ctx).getInt("learnChecks", 0);
+        boolean learning = learned < LEARN_CHECKS;
+        List<String> fresh = new ArrayList<>();
+        Set<String> nextPending = new HashSet<>();
+        for (Map.Entry<String, JSONObject> e : now.entrySet()) {
+            String key = e.getKey();
+            if (known.contains(key)) continue;
+            if (learning) { known.add(key); continue; }
+            if (!pending.contains(key)) { nextPending.add(key); continue; } // first sighting: wait for the next check
+            known.add(key);
+            JSONObject d = e.getValue();
+            String name = d.optString("name");
+            if (name.isEmpty()) name = d.optString("vendor");
+            fresh.add((name.isEmpty() ? "Unknown device" : name) + (d.optString("ip").isEmpty() ? "" : " (" + d.optString("ip") + ")"));
+        }
+        prefs(ctx).edit().putStringSet("knownDevices", known).putStringSet("pendingDevices", nextPending)
+            .putInt("learnChecks", Math.min(LEARN_CHECKS, learned + 1)).apply();
+        if (s.optBoolean("alerts") && !fresh.isEmpty()) {
+            notify(ctx, 20, fresh.size() == 1 ? "New device on your Wi-Fi" : fresh.size() + " new devices on your Wi-Fi", String.join(", ", fresh));
+        }
+    }
+
+    private static void presence(Context ctx, JSONObject s, Map<String, JSONObject> now) {
+        JSONArray people = s.optJSONArray("people");
+        if (people == null || people.length() == 0) return;
+        JSONObject state = presence(ctx);
+        boolean someoneArrived = false, someoneLeft = false, anyoneHome = false;
+        try {
+            for (int i = 0; i < people.length(); i++) {
+                JSONObject p = people.getJSONObject(i);
+                String key = p.optString("key").toLowerCase();
+                JSONObject st = state.optJSONObject(key);
+                if (st == null) st = new JSONObject().put("home", false).put("misses", 0);
+                boolean seen = now.containsKey(key);
+                if (!seen) for (JSONObject d : now.values()) if (key.equals(d.optString("ip"))) seen = true;
+                boolean wasHome = st.optBoolean("home");
+                if (seen) {
+                    st.put("misses", 0).put("seenAt", System.currentTimeMillis());
+                    if (!wasHome) { st.put("home", true).put("since", System.currentTimeMillis()); someoneArrived = true; }
+                } else {
+                    int misses = st.optInt("misses") + 1;
+                    st.put("misses", misses);
+                    if (wasHome && misses >= 2) { st.put("home", false).put("since", System.currentTimeMillis()); someoneLeft = true; }
+                }
+                if (st.optBoolean("home")) anyoneHome = true;
+                state.put(key, st);
+            }
+        } catch (JSONException ignored) {}
+        prefs(ctx).edit().putString("presence", state.toString()).apply();
+        String arrive = s.optString("arrive"), leave = s.optString("leave");
+        if (someoneArrived && !arrive.isEmpty()) SceneTimers.run(ctx, arrive, 0);
+        if (someoneLeft && !anyoneHome && !leave.isEmpty()) SceneTimers.run(ctx, leave, 0);
+    }
+
+    private static void notify(Context ctx, int id, String title, String text) {
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm.getNotificationChannel(CHANNEL) == null) {
+            nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Wi-Fi alerts", NotificationManager.IMPORTANCE_DEFAULT));
+        }
+        Intent open = new Intent(ctx, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        android.app.Notification n = new android.app.Notification.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_wifi)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(new android.app.Notification.BigTextStyle().bigText(text))
+            .setAutoCancel(true)
+            .setContentIntent(PendingIntent.getActivity(ctx, 21, open, PendingIntent.FLAG_IMMUTABLE))
+            .build();
+        try {
+            nm.notify(id, n);
+        } catch (SecurityException ignored) {} // notifications turned off for the app
+    }
+}

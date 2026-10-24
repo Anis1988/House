@@ -329,7 +329,23 @@ select.field option { background: var(--bg); color: var(--text); }
 .stat b { display: block; font-size: 19px; font-variant-numeric: tabular-nums; }
 .stat span { font-size: 11.5px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 
+.away-btn { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; border-radius: 22px; padding: 14px 16px; margin-bottom: 12px; }
+.away-btn > svg { width: 40px; height: 40px; padding: 9px; border-radius: 13px; color: #fff; background: var(--grad); flex: none; }
+.away-btn span { display: flex; flex-direction: column; gap: 2px; }
+.away-btn b { font-size: 16px; }
+.away-btn small { color: var(--muted); font-size: 13px; }
+.away-btn.on { border-color: color-mix(in srgb, var(--a3) 60%, transparent); }
+.away-btn:active { transform: scale(.98); }
+
 /* Cameras */
+.events { display: flex; flex-direction: column; gap: 8px; }
+.event { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 18px; }
+.event .th { width: 96px; aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; background: #0b0d14; flex: none; display: grid; place-items: center; color: #6b7080; }
+.event .th img { width: 100%; height: 100%; object-fit: cover; }
+.event .t { flex: 1; min-width: 0; }
+.event .t b { display: block; font-size: 14.5px; }
+.event .t span { font-size: 12.5px; color: var(--muted); }
+.shot-full { width: 100%; border-radius: 16px; margin-top: 10px; }
 .cams { display: flex; flex-direction: column; gap: 12px; }
 .cam { border-radius: 24px; overflow: hidden; }
 .cam .shot { position: relative; aspect-ratio: 16/9; background: #0b0d14; display: grid; place-items: center; color: #6b7080; }
@@ -353,6 +369,11 @@ select.field option { background: var(--bg); color: var(--text); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; margin-top: 10px; }
 .kv span { color: var(--muted); }
 .kv b { font-weight: 600; text-align: right; word-break: break-all; user-select: text; }
+
+/* Guest Wi-Fi QR */
+.qr-box { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.qr-box .qr { width: min(240px, 64vw); aspect-ratio: 1; border-radius: 18px; background: #fff; padding: 10px; image-rendering: pixelated; }
+.qr-box b { font-size: 16px; margin-top: 4px; }
 
 /* Guide */
 .guide h4 { margin: 0 0 4px; font-size: 15px; display: flex; align-items: center; gap: 8px; }

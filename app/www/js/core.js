@@ -11,7 +11,7 @@ const store = {
   set(k, v) {
     try { v === null || v === undefined ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {}
     // Device logins changed: hand them to the native side, which runs scene timers with the app closed.
-    if (/^(lg|ss|nest|wyze)\./.test(k)) House?.syncCreds?.();
+    if (/^(lg|ss|nest|wyze)\.|^wifi\.(router|range)$/.test(k)) House?.syncCreds?.();
   },
   json(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   setJson(k, v) { this.set(k, JSON.stringify(v)); },
@@ -100,6 +100,11 @@ const Net = plugin("Net", {
   fetchImage: async () => { throw new Error("no"); }, lanGet: async () => { throw new Error("no"); }, wake: async () => {},
   localPrefix: async () => ({ prefix: "192.168.50", gateway: "192.168.50.1" }), scan: async () => ({ hosts: [] }),
   sweep: async () => ({ alive: [] }), ssdp: async () => ({ devices: [] }), mdns: async () => ({ devices: [] }), md5: async ({ text }) => ({ hash: text }),
+  getWatch: async () => ({ settings: store.json("mock.watch", {}), presence: {}, notifications: true }),
+  setWatch: async ({ settings }) => (store.setJson("mock.watch", settings), { settings, presence: {}, notifications: true }),
+  checkWatch: async () => ({ settings: store.json("mock.watch", {}), presence: {}, notifications: true }),
+  speedTest: async () => (await sleep(1500), { down: 512.3, up: 41.7, ping: 12 }),
+  qr: async () => ({ dataUrl: "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#fff"/><rect x="1" y="1" width="3" height="3"/><rect x="6" y="1" width="3" height="3"/><rect x="1" y="6" width="3" height="3"/><rect x="5" y="5" width="2" height="2"/></svg>') }),
 });
 
 const House = {
@@ -114,13 +119,15 @@ const House = {
   syncCreds() {
     clearTimeout(this._credsTimer);
     this._credsTimer = setTimeout(() => {
-      const nest = store.json("nest.cfg", {}), tok = store.json("nest.tok", null), wy = store.json("wyze.acct", null);
+      const nest = store.json("nest.cfg", {}), tok = store.json("nest.tok", null), wy = store.json("wyze.acct", null), router = store.json("wifi.router", {});
       Lights.setCreds({ creds: {
         lgIp: store.get("lg.ip", ""), lgKey: store.get("lg.key", ""), lgMac: store.get("lg.mac", ""),
         lgManifest: JSON.stringify(typeof LG !== "undefined" ? LG.manifest : {}),
         ssIp: store.get("ss.ip", ""), ssToken: store.get("ss.token", ""), ssMac: store.get("ss.mac", ""),
         nestProject: nest.project || "", nestClient: nest.clientId || "", nestSecret: nest.secret || "", nestRefresh: tok?.refresh || "",
         wyzeAccess: wy?.access || "", wyzeRefresh: wy?.refresh || "", wyzePhone: store.get("wyze.phone", ""), wyzeCams: store.json("wyze.cams", []),
+        routerAddr: router.addr || "", routerUser: router.user || "admin", routerPass: router.pass || "",
+        scanRange: store.get("wifi.range", ""),
       } }).catch(() => {});
     }, 400);
   },

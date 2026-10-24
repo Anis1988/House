@@ -159,6 +159,89 @@
     $("wfAddr").value = r.addr;
     $("wfUser").value = r.user || "admin";
     $("wfSigned").hidden = !r.pass;
+    paintHome();
+    paintWatch();
+  }
+
+  /* ---- Who's home ---- */
+  let watch = { settings: {}, presence: {}, notifications: true };
+  const people = () => watch.settings.people || [];
+  const personOf = (d) => people().find((p) => p.key === ((d.mac || "").toLowerCase() || d.ip));
+  // Home if this scan sees their phone; otherwise what the background check last decided.
+  function isHome(p) {
+    const d = devices.find((x) => ((x.mac || "").toLowerCase() || x.ip) === p.key || x.ip === p.key);
+    if (d?.online) return { home: true, since: watch.presence[p.key]?.since };
+    const st = watch.presence[p.key];
+    return { home: !!st?.home && !d, since: st?.since };
+  }
+  const ago = (ts) => { if (!ts) return ""; const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
+  function paintHome() {
+    const ps = people();
+    $("wfHome").hidden = !ps.length;
+    $("wfHome").innerHTML = `<div class="head-card" style="margin-bottom:6px"><div class="grow"><b>Who's home</b></div></div>` + ps.map((p) => {
+      const h = isHome(p);
+      return `<div class="set-row"><span class="dot ${h.home ? "on" : ""}"></span><div class="set-text"><b>${esc(p.name)}</b><span>${h.home ? "Home" : "Away"}${h.since ? ` · ${ago(h.since)}` : ""}</span></div></div>`;
+    }).join("");
+  }
+  async function saveWatch(msg) {
+    try { watch = await Net.setWatch({ settings: watch.settings }); if (msg) toast(msg); }
+    catch { toast("Couldn't save that", true); }
+    paint();
+  }
+  async function scenesList() {
+    try { return (await Lights.getScenes()).scenes || []; } catch { return []; }
+  }
+  async function paintWatch() {
+    if (!$("wfAlerts")) return;
+    const s = watch.settings;
+    $("wfAlerts").classList.toggle("on", !!s.alerts);
+    $("wfNotifNote").hidden = !s.alerts || watch.notifications;
+    $("wfPeople").innerHTML = people().length ? people().map((p) => `<div class="set-row"><div class="set-text"><b>${esc(p.name)}</b><span>${esc(p.key)}</span></div><button class="ghost center auto danger" data-unperson="${esc(p.key)}">Remove</button></div>`).join("")
+      : `<p class="note" style="margin:0">No one yet. On the Devices tab, tap someone's phone and choose “This is a person's phone”.</p>`;
+    const sc = await scenesList();
+    const opts = (val) => `<option value="">Nothing</option>` + sc.map((x) => `<option value="custom:${esc(x.id)}" ${val === `custom:${x.id}` ? "selected" : ""}>${esc(x.name)}</option>`).join("");
+    $("wfArrive").innerHTML = opts(s.arrive || "");
+    $("wfLeave").innerHTML = opts(s.leave || "");
+  }
+
+  /* ---- Speed test ---- */
+  async function speedTest() {
+    $("wfSpeedGo").disabled = true;
+    $("wfSpeedGo").innerHTML = `${svg("refresh", 'style="width:18px;height:18px;vertical-align:-4px;animation:spin 1s linear infinite"')} Testing… about 20 seconds`;
+    try {
+      const r = await Net.speedTest();
+      const hist = [{ ...r, at: Date.now() }, ...store.json("wifi.speed", [])].slice(0, 10);
+      store.setJson("wifi.speed", hist);
+      paintSpeed();
+    } catch (e) { toast(e.message || "The speed test didn't finish", true); }
+    $("wfSpeedGo").disabled = false;
+    $("wfSpeedGo").textContent = "Run speed test";
+  }
+  function paintSpeed() {
+    const hist = store.json("wifi.speed", []);
+    const last = hist[0];
+    $("wfSpeed").innerHTML = `
+      <div class="stat glass"><b>${last ? last.down : "—"}</b><span>Down Mbps</span></div>
+      <div class="stat glass"><b>${last ? last.up : "—"}</b><span>Up Mbps</span></div>
+      <div class="stat glass"><b>${last ? last.ping : "—"}</b><span>Ping ms</span></div>`;
+    $("wfSpeedHist").innerHTML = hist.length > 1 ? hist.slice(1).map((h) => `<div class="set-row"><div class="set-text"><b>${h.down} ↓ · ${h.up} ↑ Mbps</b><span>${new Date(h.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ping ${h.ping} ms</span></div></div>`).join("") : "";
+    $("wfSpeedWhen").textContent = last ? `Last test ${ago(last.at)} ago` : "Tests your internet through Cloudflare's speed test servers.";
+  }
+
+  /* ---- Guest Wi-Fi QR ---- */
+  const guest = () => store.json("wifi.guest", { ssid: "", pass: "", sec: "WPA" });
+  const qrEsc = (s) => s.replace(/([\\;,":])/g, "\\$1");
+  async function paintGuest() {
+    const g = guest();
+    $("wfGuestSsid").value = g.ssid;
+    $("wfGuestPass").value = g.pass;
+    $("wfGuestSec").value = g.sec;
+    if (!g.ssid) { $("wfQr").innerHTML = `<p class="note" style="margin:0">Type your Wi-Fi name and password below to make the code.</p>`; return; }
+    const text = `WIFI:T:${g.sec === "none" ? "nopass" : g.sec};S:${qrEsc(g.ssid)};${g.sec === "none" ? "" : `P:${qrEsc(g.pass)};`};`;
+    try {
+      const { dataUrl } = await Net.qr({ text });
+      $("wfQr").innerHTML = `<img class="qr" alt="Wi-Fi QR code for ${esc(g.ssid)}" src="${dataUrl}"><b>${esc(g.ssid)}</b><span class="muted small">Point a phone camera at the code to join</span>`;
+    } catch { $("wfQr").innerHTML = `<p class="note">Couldn't make the code.</p>`; }
   }
 
   function openDev(key) {
@@ -178,7 +261,25 @@
       <div class="list">
         <button class="primary full" id="devSave">Save name</button>
         ${side ? `<button class="ghost center" id="devOpen">Open ${esc(side.name)}</button>` : ""}
-      </div>`);
+      </div>
+      <div class="label" style="margin-top:18px">Who's home</div>
+      ${personOf(d) ? `<p class="note" style="margin-top:0">This is ${esc(personOf(d).name)}'s phone.</p><div class="list"><button class="ghost center danger" id="devUnperson">Not a person's phone</button></div>`
+        : `<label class="fld" style="margin-top:0">This is a person's phone: whose?<input class="field" id="devPerson" placeholder="Anis"></label>
+          <div class="list"><button class="ghost center" id="devPersonSave">Use for Who's home</button></div>
+          ${d.mac ? "" : `<p class="note">Without the router sign-in the phone is known by its address, which can change. Signing in to the router is more reliable.</p>`}`}`);
+    const pkey = (d.mac || "").toLowerCase() || d.ip;
+    body.querySelector("#devPersonSave")?.addEventListener("click", () => {
+      const name = $("devPerson").value.trim();
+      if (!name) { toast("Type whose phone it is", true); return; }
+      watch.settings.people = [...people().filter((p) => p.key !== pkey), { key: pkey, name }];
+      House.closeSheet();
+      saveWatch(`${name} added to Who's home`);
+    });
+    body.querySelector("#devUnperson")?.addEventListener("click", () => {
+      watch.settings.people = people().filter((p) => p.key !== pkey);
+      House.closeSheet();
+      saveWatch("Removed from Who's home");
+    });
     body.querySelector("#devSave").onclick = () => {
       const n = names(), k = (d.mac || "").toLowerCase() || d.ip, v = $("devName").value.trim();
       if (v) n[k] = v; else delete n[k];
@@ -196,11 +297,41 @@
     tabs: [
       { id: "devices", label: "Devices", icon: "wifi", html: `
         <div class="card glass"><div class="head-card"><div class="grow"><b>Your Wi-Fi</b><div class="status-line" id="wfSub"></div></div><button class="round-btn glass" id="wfRefresh" aria-label="Look again">${svg("refresh")}</button></div></div>
+        <div class="card glass" id="wfHome" hidden></div>
         <input class="field search" id="wfSearch" placeholder="Search by name, address or maker" aria-label="Search devices">
         <div id="wfList"></div>` },
+      { id: "tools", label: "Tools", icon: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>', html: `
+        <div class="label">Internet speed</div>
+        <div class="card glass">
+          <div class="stats" id="wfSpeed"></div>
+          <p class="note" id="wfSpeedWhen"></p>
+          <div class="list"><button class="primary full" id="wfSpeedGo">Run speed test</button></div>
+          <div id="wfSpeedHist" style="margin-top:8px"></div>
+        </div>
+        <div class="label">Guest Wi-Fi</div>
+        <div class="card glass">
+          <div class="qr-box" id="wfQr"></div>
+          <label class="fld">Wi-Fi name<input class="field" id="wfGuestSsid" autocomplete="off" placeholder="Your Wi-Fi name"></label>
+          <label class="fld">Wi-Fi password<input class="field" id="wfGuestPass" type="password" autocomplete="off"></label>
+          <label class="fld">Security<select class="field" id="wfGuestSec"><option value="WPA">WPA / WPA2 / WPA3</option><option value="WEP">WEP</option><option value="none">No password</option></select></label>
+          <div class="list"><button class="ghost center" id="wfGuestSave">Make the code</button></div>
+          <p class="note">Kept on this phone only. Use your guest network's name and password if you have one.</p>
+        </div>` },
       { id: "settings", label: "Settings", icon: "gear" },
     ],
     settingsHtml: `
+      <div class="label">Alerts</div>
+      <div class="card glass">
+        <div class="set-row"><div class="set-text"><b>New device alert</b><span>A notification when a device joins your Wi-Fi for the first time. Checked about every 15 min; it learns your devices for the first hour. Most reliable with the router signed in.</span></div><button class="tgl" id="wfAlerts" aria-label="New device alert"><i></i></button></div>
+        <p class="note" id="wfNotifNote" hidden>Notifications are off for House. Turn them on in your phone's Settings → Apps → House → Notifications.</p>
+      </div>
+      <div class="label">Who's home</div>
+      <div class="card glass">
+        <div id="wfPeople"></div>
+        <label class="fld">When someone gets home, run<select class="field" id="wfArrive"></select></label>
+        <label class="fld">When everyone has left, run<select class="field" id="wfLeave"></select></label>
+        <p class="note">Checked about every 15 min, so it can take a little while. Someone counts as gone after their phone is missing twice in a row. Phones with “private Wi-Fi address” turned off for this network are recognised more reliably.</p>
+      </div>
       <div class="label">Router (ASUS)</div>
       <div class="card glass">
         <p class="note" style="margin-top:0">Optional. With your router's sign-in, the list shows every device with its real name, maker, Wi-Fi band and signal. Without it, the app finds devices itself.</p>
@@ -222,6 +353,10 @@
       ["wifi", "Your devices", "Everything connected to your Wi-Fi, grouped into smart home, phones and computers. Faded ones were seen before but aren't on now."],
       ["router", "Full list", "Sign in to your ASUS router in Settings for real names, makers, Wi-Fi band and signal strength. Your password stays on this phone."],
       ["chip", "Name a device", "Tap any device to give it your own name. Devices the app controls open their own page from there."],
+      ["bell", "New device alert", "Settings → New device alert sends a notification when something joins your Wi-Fi for the first time."],
+      ["phone", "Who's home", "Tap someone's phone → “This is a person's phone”. The Devices tab then shows who's home, and Settings can run a scene when someone arrives or everyone leaves."],
+      ["refresh", "Speed test", "Tools → Run speed test measures your internet's download, upload and ping, and keeps the last results."],
+      ["key", "Guest Wi-Fi", "Tools → type your Wi-Fi name and password once; guests point their camera at the code to join."],
     ],
     mount() {
       $("wfRefresh").onclick = () => { buzz(6); load(true); };
@@ -245,9 +380,30 @@
         toast(v ? `Will scan ${v}.1 – 254` : "Will scan your phone's network");
       };
       $("wfNames").onclick =() => { if (!confirm("Clear all your device names?")) return; store.set("wifi.names", null); load(); };
+      $("wfAlerts").onclick = () => { buzz(); watch.settings.alerts = !watch.settings.alerts; saveWatch(watch.settings.alerts ? "New device alert on" : "New device alert off"); };
+      $("wfPeople").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-unperson]");
+        if (b) { watch.settings.people = people().filter((p) => p.key !== b.dataset.unperson); saveWatch("Removed from Who's home"); }
+      });
+      $("wfArrive").onchange = (e) => { watch.settings.arrive = e.target.value; saveWatch("Saved"); };
+      $("wfLeave").onchange = (e) => { watch.settings.leave = e.target.value; saveWatch("Saved"); };
+      $("wfSpeedGo").onclick = () => { buzz(); speedTest(); };
+      $("wfGuestSave").onclick = () => {
+        const g = { ssid: $("wfGuestSsid").value.trim(), pass: $("wfGuestPass").value, sec: $("wfGuestSec").value };
+        if (!g.ssid) { toast("Type the Wi-Fi name", true); return; }
+        if (g.sec !== "none" && !g.pass) { toast("Type the Wi-Fi password", true); return; }
+        store.setJson("wifi.guest", g);
+        paintGuest();
+      };
       devices = store.json("wifi.last", []);
+      Net.getWatch().then((w) => { watch = w; paint(); }).catch(() => {});
       paint();
+      paintSpeed();
+      paintGuest();
     },
-    onShow(tab) { if (tab === "devices" && !busy && !devices.length) load(); else paint(); },
+    onShow(tab) {
+      if (tab === "devices" && !busy && !devices.length) load(); else paint();
+      if (tab === "devices" && people().length) Net.getWatch().then((w) => { watch = w; paintHome(); }).catch(() => {});
+    },
   });
 })();

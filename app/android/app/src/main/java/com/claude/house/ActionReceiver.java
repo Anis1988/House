@@ -14,6 +14,19 @@ public class ActionReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context ctx, Intent intent) {
         Context app = ctx.getApplicationContext();
+        if (WifiWatch.ACTION.equals(intent.getAction())) {
+            PendingResult result = goAsync();
+            // Own thread: a sweep takes ~15 s and shouldn't hold up widget taps.
+            new Thread(() -> {
+                try {
+                    WifiWatch.check(app);
+                } catch (Exception ignored) {
+                } finally {
+                    result.finish();
+                }
+            }).start();
+            return;
+        }
         if (SceneTimers.ACTION.equals(intent.getAction())) {
             PendingResult result = goAsync();
             worker.execute(() -> {

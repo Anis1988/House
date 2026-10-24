@@ -2,6 +2,7 @@ package com.claude.house;
 
 import android.content.Context;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.util.Base64;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -9,6 +10,9 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+import com.getcapacitor.PermissionState;
 import java.net.ConnectException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
@@ -38,7 +42,10 @@ import okhttp3.WebSocketListener;
  * Home-network tools for the web page: WebSockets to the TVs (self-signed TLS), a sweep that
  * finds every device that's on, SSDP and mDNS names, Wake-on-LAN, and LAN-only image fetches.
  */
-@CapacitorPlugin(name = "Net")
+@CapacitorPlugin(
+    name = "Net",
+    permissions = { @Permission(alias = "notifications", strings = { android.Manifest.permission.POST_NOTIFICATIONS }) }
+)
 public class NetPlugin extends Plugin {
     private final Map<String, WebSocket> sockets = new ConcurrentHashMap<>();
     private final ExecutorService pool = Executors.newCachedThreadPool();
@@ -248,34 +255,8 @@ public class NetPlugin extends Plugin {
             call.reject("Not on a home network");
             return;
         }
-        int[] ports = {80, 443, 8080, 554, 62078, 7000, 8009, 3001, 8001, 6668, 9999, 1400};
         pool.execute(() -> {
-            ExecutorService probes = Executors.newFixedThreadPool(224);
-            Map<String, Set<Integer>> alive = new ConcurrentHashMap<>();
-            for (int i = 1; i < 255; i++) {
-                String host = prefix + "." + i;
-                for (int port : ports) {
-                    probes.execute(() -> {
-                        try (Socket s = new Socket()) {
-                            s.connect(new InetSocketAddress(host, port), 900);
-                            alive.computeIfAbsent(host, k -> Collections.synchronizedSet(new LinkedHashSet<>())).add(port);
-                        } catch (ConnectException e) {
-                            // Refused = a device is there, it just doesn't use this port.
-                            if (String.valueOf(e.getMessage()).contains("ECONNREFUSED")) alive.computeIfAbsent(host, k -> Collections.synchronizedSet(new LinkedHashSet<>()));
-                        } catch (Exception ignored) {}
-                    });
-                }
-                // Also ask the OS: works for devices that answer ping when the app may (some phones allow it).
-                probes.execute(() -> {
-                    try {
-                        if (InetAddress.getByName(host).isReachable(900)) alive.computeIfAbsent(host, k -> Collections.synchronizedSet(new LinkedHashSet<>()));
-                    } catch (Exception ignored) {}
-                });
-            }
-            probes.shutdown();
-            try {
-                probes.awaitTermination(25, TimeUnit.SECONDS);
-            } catch (InterruptedException ignored) {}
+            Map<String, Set<Integer>> alive = LanNet.sweep(prefix);
             JSArray list = new JSArray();
             for (Map.Entry<String, Set<Integer>> e : alive.entrySet()) {
                 JSObject d = new JSObject();
@@ -416,6 +397,123 @@ public class NetPlugin extends Plugin {
             call.resolve(out);
         } catch (Exception e) {
             call.reject(e.getMessage());
+        }
+    }
+
+    // ---- Wi-Fi watch: new device alerts and who's home ----
+
+    @PluginMethod
+    public void getWatch(PluginCall call) {
+        try {
+            JSObject r = new JSObject();
+            r.put("settings", new JSObject(WifiWatch.settings(getContext()).toString()));
+            r.put("presence", new JSObject(WifiWatch.presence(getContext()).toString()));
+            r.put("notifications", Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED);
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** { settings: { alerts, people: [{key, name}], arrive, leave } } */
+    @PluginMethod
+    public void setWatch(PluginCall call) {
+        JSObject s = call.getObject("settings", new JSObject());
+        WifiWatch.save(getContext(), s);
+        // Alerts need permission to notify (Android 13+); ask once, right when they're turned on.
+        if (s.optBoolean("alerts") && Build.VERSION.SDK_INT >= 33 && getPermissionState("notifications") != PermissionState.GRANTED) {
+            requestPermissionForAlias("notifications", call, "watchPermission");
+            return;
+        }
+        getWatch(call);
+    }
+
+    @PermissionCallback
+    private void watchPermission(PluginCall call) {
+        getWatch(call);
+    }
+
+    /** Runs one check now (who's home, new devices) and returns the result. */
+    @PluginMethod
+    public void checkWatch(PluginCall call) {
+        pool.execute(() -> {
+            WifiWatch.check(getContext());
+            getWatch(call);
+        });
+    }
+
+    // ---- Speed test (Cloudflare's speed test servers) ----
+
+    /** → { down, up (Mbit/s), ping (ms) }. Takes about 20 seconds. */
+    @PluginMethod
+    public void speedTest(PluginCall call) {
+        pool.execute(() -> {
+            okhttp3.OkHttpClient http = new okhttp3.OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).writeTimeout(20, TimeUnit.SECONDS).build();
+            try {
+                // Ping: the fastest of a few tiny requests (the first one also sets up the connection).
+                long best = Long.MAX_VALUE;
+                for (int i = 0; i < 6; i++) {
+                    long t = System.nanoTime();
+                    try (Response r = http.newCall(new Request.Builder().url("https://speed.cloudflare.com/__down?bytes=0").build()).execute()) {
+                        r.body().bytes();
+                    }
+                    if (i > 0) best = Math.min(best, System.nanoTime() - t);
+                }
+                // Download: read for up to 8 seconds.
+                long bytes = 0, start = System.nanoTime(), limit = 8_000_000_000L;
+                while (System.nanoTime() - start < limit) {
+                    try (Response r = http.newCall(new Request.Builder().url("https://speed.cloudflare.com/__down?bytes=25000000").build()).execute()) {
+                        java.io.InputStream in = r.body().byteStream();
+                        byte[] buf = new byte[65536];
+                        int n;
+                        while ((n = in.read(buf)) > 0) {
+                            bytes += n;
+                            if (System.nanoTime() - start > limit) break;
+                        }
+                    }
+                }
+                double down = bytes * 8 / ((System.nanoTime() - start) / 1e9) / 1e6;
+                // Upload: send 5 MB chunks for up to 8 seconds.
+                byte[] chunk = new byte[5_000_000];
+                long sent = 0;
+                start = System.nanoTime();
+                while (System.nanoTime() - start < limit) {
+                    try (Response r = http.newCall(new Request.Builder().url("https://speed.cloudflare.com/__up")
+                        .post(okhttp3.RequestBody.create(chunk, okhttp3.MediaType.get("application/octet-stream"))).build()).execute()) {
+                        r.body().bytes();
+                    }
+                    sent += chunk.length;
+                }
+                double up = sent * 8 / ((System.nanoTime() - start) / 1e9) / 1e6;
+                JSObject out = new JSObject();
+                out.put("down", Math.round(down * 10) / 10.0);
+                out.put("up", Math.round(up * 10) / 10.0);
+                out.put("ping", Math.round(best / 1e6));
+                call.resolve(out);
+            } catch (Exception e) {
+                call.reject("The speed test couldn't reach the internet");
+            }
+        });
+    }
+
+    // ---- QR code (guest Wi-Fi) ----
+
+    /** { text } → { dataUrl } a PNG QR code. */
+    @PluginMethod
+    public void qr(PluginCall call) {
+        try {
+            com.google.zxing.common.BitMatrix m = new com.google.zxing.qrcode.QRCodeWriter()
+                .encode(call.getString("text", ""), com.google.zxing.BarcodeFormat.QR_CODE, 600, 600);
+            android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(m.getWidth(), m.getHeight(), android.graphics.Bitmap.Config.RGB_565);
+            for (int x = 0; x < m.getWidth(); x++) for (int y = 0; y < m.getHeight(); y++) bmp.setPixel(x, y, m.get(x, y) ? 0xFF000000 : 0xFFFFFFFF);
+            java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+            bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, png);
+            JSObject out = new JSObject();
+            out.put("dataUrl", "data:image/png;base64," + Base64.encodeToString(png.toByteArray(), Base64.NO_WRAP));
+            call.resolve(out);
+        } catch (Exception e) {
+            call.reject("Couldn't make the QR code");
         }
     }
 }

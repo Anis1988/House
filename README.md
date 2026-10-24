@@ -14,8 +14,8 @@ Every push to `main` builds and publishes the next version, and the app shows an
 | 📺 LG TV (OLED65C3) | Home Wi-Fi; accept once on the TV | Remote · Apps · Settings |
 | 🖥️ Samsung screen (Odyssey G7) | Home Wi-Fi; Allow once on the screen | Remote · Settings |
 | 🌡️ Nest thermostat + doorbell | Google Device Access (your own project, $5 once) | Thermostat · Doorbell · Settings |
-| 📷 Wyze cameras | Wyze cloud; your login + free API key | Cameras · Settings |
-| 📶 Wi-Fi | Finds devices itself; optional ASUS router sign-in for the full list | Devices · Settings |
+| 📷 Wyze cameras | Wyze cloud; your login + free API key | Cameras · Events · Settings |
+| 📶 Wi-Fi | Finds devices itself; optional ASUS router sign-in for the full list | Devices · Tools · Settings |
 
 Any side can be hidden in Settings → Devices in the app. Logins and keys stay on the phone.
 
@@ -23,9 +23,9 @@ Any side can be hidden in Settings → Devices in the app. Logins and keys stay 
 - **Lights:** per bulb on/off and brightness (colour and warm–cool on bulbs that have them), rooms from the LIFX app, All lights switch and brightness, home-screen widget.
 - **LG TV:** power (on via Wake-on-LAN), arrows/OK, back/home, volume and channel, mute, play/pause, apps and inputs.
 - **Samsung screen:** arrows/OK, back/home/source, volume, mute, standby.
-- **Nest:** thermostat dial (set temperature, Heat/Cool/Heat·Cool/Off, Eco, humidity), °C/°F. Doorbell is listed; live view and ring alerts are planned.
-- **Wyze:** latest snapshot per camera, online state, on/off. Google-login accounts need a Wyze password first (Forgot password in the Wyze app).
-- **Wi-Fi:** every device on the network, grouped and named where possible (LIFX, TV, screen, cameras, Apple, Cast, Tuya…); tap one to give it your own name.
+- **Nest:** thermostat dial (set temperature, Heat/Cool/Heat·Cool/Off, Eco, humidity), °C/°F. Doorbell is listed; live view and ring alerts are planned. Big I'm away / I'm home button (Eco).
+- **Wyze:** latest snapshot per camera, online state, on/off; Events tab with the last two days of motion/sound/person alerts and their snapshots. Google-login accounts need a Wyze password first (Forgot password in the Wyze app).
+- **Wi-Fi:** every device on the network, grouped and named where possible (LIFX, TV, screen, cameras, Apple, Cast, Tuya…); tap one to give it your own name. New device alert (notification, checked every ~15 min), Who's home (mark phones as people; run a scene when someone arrives or everyone leaves), speed test with history, guest Wi-Fi QR code.
 
 ## Planned next
 

@@ -1,9 +1,19 @@
 package com.claude.house;
 
+import java.net.ConnectException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.concurrent.TimeUnit;
@@ -58,6 +68,42 @@ final class LanNet {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * Which addresses in prefix.1-254 have a device that's on, with the ports that answered.
+     * Apps can't ping, so this knocks on a few common ports: an answer or a refusal both mean
+     * something is there. Blocking, about 15 seconds.
+     */
+    static Map<String, Set<Integer>> sweep(String prefix) {
+        int[] ports = {80, 443, 8080, 554, 62078, 7000, 8009, 3001, 8001, 6668, 9999, 1400};
+        ExecutorService probes = Executors.newFixedThreadPool(224);
+        Map<String, Set<Integer>> alive = new ConcurrentHashMap<>();
+        for (int i = 1; i < 255; i++) {
+            String host = prefix + "." + i;
+            for (int port : ports) {
+                probes.execute(() -> {
+                    try (Socket s = new Socket()) {
+                        s.connect(new InetSocketAddress(host, port), 900);
+                        alive.computeIfAbsent(host, k -> Collections.synchronizedSet(new LinkedHashSet<>())).add(port);
+                    } catch (ConnectException e) {
+                        // Refused = a device is there, it just doesn't use this port.
+                        if (String.valueOf(e.getMessage()).contains("ECONNREFUSED")) alive.computeIfAbsent(host, k -> Collections.synchronizedSet(new LinkedHashSet<>()));
+                    } catch (Exception ignored) {}
+                });
+            }
+            // Also ask the OS: works for devices that answer ping when the app may (some phones allow it).
+            probes.execute(() -> {
+                try {
+                    if (InetAddress.getByName(host).isReachable(900)) alive.computeIfAbsent(host, k -> Collections.synchronizedSet(new LinkedHashSet<>()));
+                } catch (Exception ignored) {}
+            });
+        }
+        probes.shutdown();
+        try {
+            probes.awaitTermination(25, TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {}
+        return alive;
     }
 
     /** Sends a Wake-on-LAN magic packet. Blocking. */

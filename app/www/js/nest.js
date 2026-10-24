@@ -98,6 +98,7 @@
         </div>
         <div class="seg3" style="--n:${modes.length}">${modes.map((m) => `<button data-mode="${m}" class="${m === mode ? "on" : ""}">${label[m] || m}</button>`).join("")}</div>
       </div>
+      <button class="away-btn glass${eco ? " on" : ""}" data-away>${svg(eco ? "home" : "leaf")}<span><b>${eco ? "I'm home" : "I'm away"}</b><small>${eco ? "Away now: Eco is saving energy. Tap to go back to normal." : "Puts the thermostat in Eco while you're out."}</small></span></button>
       <div class="stats">
         <div class="stat glass"><b>${shown(now)}°</b><span>Inside</span></div>
         <div class="stat glass"><b>${hum != null ? Math.round(hum) + "%" : "—"}</b><span>Humidity</span></div>
@@ -112,6 +113,7 @@
     }));
     box.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => command(t, "ThermostatMode.SetMode", { mode: b.dataset.mode }, `Mode: ${label[b.dataset.mode] || b.dataset.mode}`)));
     box.querySelector("[data-eco]").onclick = () => command(t, "ThermostatEco.SetMode", { mode: eco ? "OFF" : "MANUAL_ECO" }, eco ? "Eco off" : "Eco on");
+    box.querySelector("[data-away]").onclick = () => command(t, "ThermostatEco.SetMode", { mode: eco ? "OFF" : "MANUAL_ECO" }, eco ? "Welcome home: Eco off" : "Away: Eco on");
   }
   function paintDoor() {
     const box = $("nestDoor");
