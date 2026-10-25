@@ -72,7 +72,7 @@ final class WifiWatch {
     /**
      * Inexact on purpose: Android batches it with other wake-ups, so it costs little battery.
      * Every ~5 minutes with the router signed in and people to watch (one quick question to the
-     * router), otherwise every ~15 (a network sweep).
+     * router), otherwise every ~15 (a network sweep). "everyMin" in the settings overrides it.
      */
     static void schedule(Context ctx) {
         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
@@ -80,7 +80,9 @@ final class WifiWatch {
         am.cancel(pi);
         if (!wanted(ctx)) return;
         JSONArray people = settings(ctx).optJSONArray("people");
-        long every = Asus.signedIn(ctx) && people != null && people.length() > 0 ? 5 * 60_000L : AlarmManager.INTERVAL_FIFTEEN_MINUTES;
+        int chosen = settings(ctx).optInt("everyMin", 0);
+        long every = chosen > 0 ? chosen * 60_000L
+            : Asus.signedIn(ctx) && people != null && people.length() > 0 ? 5 * 60_000L : AlarmManager.INTERVAL_FIFTEEN_MINUTES;
         am.setInexactRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + every, every, pi);
     }
 

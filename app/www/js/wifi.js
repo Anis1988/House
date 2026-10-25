@@ -250,11 +250,16 @@
     $("wfThisPhone").hidden = people().some((p) => p.key === "this-phone");
     $("wfHistOn").classList.toggle("on", !!s.history);
     $("wfOutOn").classList.toggle("on", !!s.outages);
-    $("wfPeople").innerHTML = people().length ? people().map((p) => `<div class="set-row"><div class="set-text"><b>${esc(p.name)}</b><span>${p.key === "this-phone" ? "This phone · updates right away" : esc(p.key) + (router().pass ? " · checked every ~5 min" : " · checked every ~15 min")}</span></div><button class="ghost center auto danger" data-unperson="${esc(p.key)}">Remove</button></div>`).join("")
+    $("wfPeople").innerHTML = people().length ? people().map((p) => `<div class="set-row"><div class="set-text"><b>${esc(p.name)}</b><span>${p.key === "this-phone" ? "This phone · updates right away" : esc(p.key) + ` · checked every ~${watch.settings.everyMin || (router().pass ? 5 : 15)} min`}</span></div><button class="ghost center auto danger" data-unperson="${esc(p.key)}">Remove</button></div>`).join("")
       : `<p class="note" style="margin:0">No one yet. On the Devices tab, tap someone's phone and choose “This is a person's phone”.</p>`;
     const sc = await scenesList();
     const opts = (val) => `<option value="">Nothing</option>` + sc.map((x) => `<option value="custom:${esc(x.id)}" ${val === `custom:${x.id}` ? "selected" : ""}>${esc(x.name)}</option>`).join("");
     $("wfArrive").innerHTML = opts(s.arrive || "");
+    const auto = router().pass ? 5 : 15;
+    $("wfEvery").innerHTML = [0, 1, 2, 5, 10, 15, 30].map((m) => `<option value="${m}" ${(s.everyMin || 0) === m ? "selected" : ""}>${m ? `${m} min` : `Automatic (${auto} min)`}</option>`).join("");
+    $("wfEveryNote").textContent = (s.everyMin && s.everyMin < 5 ? "Shorter checks use a bit more battery. " : "")
+      + (router().pass ? "" : "Without the router sign-in each check scans the whole network (about 20 seconds), so 5 min or more is better. ")
+      + "When your phone is asleep Android can delay a check by a few minutes.";
     $("wfNoCloud").hidden = !s.leave || !!store.get("lifx.token");
     $("wfLeave").innerHTML = opts(s.leave || "");
     const bulbs = House.byId("lights")?.list?.() || [];
@@ -413,10 +418,12 @@
           <div class="list"><button class="primary full" id="wfMeAdd">Add this phone</button></div>
           <p class="note">This phone knows the moment it leaves or joins your Wi-Fi, so it updates right away (away after 2 minutes off the Wi-Fi). Do this while connected to your home Wi-Fi.</p>
         </div>
+        <label class="fld">Check every<select class="field" id="wfEvery"></select></label>
+        <p class="note" id="wfEveryNote"></p>
         <label class="fld">When someone gets home, run<select class="field" id="wfArrive"></select></label>
         <label class="fld">When everyone has left, run<select class="field" id="wfLeave"></select></label>
         <p class="note err" id="wfNoCloud" hidden>Once your phone is off the home Wi-Fi it can't reach the bulbs. Add a LIFX cloud token in <b>Lights → Settings</b>, or the lights won't change when you leave.</p>
-        <p class="note">With the router signed in, checked about every 5 min, and someone counts as gone as soon as their phone is off the Wi-Fi. Without it, about every 15 min, and gone after their phone is missing twice in a row. Opening this side checks right away. Phones with “private Wi-Fi address” turned off for this network are recognised more reliably. Lights can only be reached from the home Wi-Fi: for a leave scene, add a LIFX cloud token in Lights → Settings.</p>
+        <p class="note">With the router signed in, someone counts as gone as soon as their phone is off the Wi-Fi. Without it, after their phone is missing twice in a row. Opening this side checks right away. Phones with “private Wi-Fi address” turned off for this network are recognised more reliably. Lights can only be reached from the home Wi-Fi: for a leave scene, add a LIFX cloud token in Lights → Settings.</p>
       </div>
       <div class="label">Lights react</div>
       <div class="card glass">
@@ -496,6 +503,7 @@
         if (b) { watch.settings.people = people().filter((p) => p.key !== b.dataset.unperson); saveWatch("Removed from Who's home"); }
       });
       $("wfArrive").onchange = (e) => { watch.settings.arrive = e.target.value; saveWatch("Saved"); };
+      $("wfEvery").onchange = (e) => { const m = +e.target.value; if (m) watch.settings.everyMin = m; else delete watch.settings.everyMin; saveWatch(m ? `Checks every ${m} min` : "Checks automatically"); };
       $("wfLeave").onchange = (e) => { watch.settings.leave = e.target.value; saveWatch("Saved"); };
       $("wfSpeedGo").onclick = () => { buzz(); speedTest(); };
       const needLight = () => { if (watch.settings.flashLight) return false; toast("Pick the light first", true); return true; };
