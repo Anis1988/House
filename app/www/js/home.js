@@ -11,6 +11,14 @@
   const fmtTime = (m) => new Date(2000, 0, 1, Math.floor(m / 60), m % 60).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const fmtClock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const SCENE_ICONS = ["bulb", "sun", "moon", "tv", "star", "leaf", "flame", "home", "bell", "power"];
+  // Icon colours (same list in Widgets.java). Built-ins get their own until you pick one.
+  const SCENE_COLORS = { amber: ["#fbbf24", "#f97316"], coral: ["#fb7185", "#e11d48"], pink: ["#f472b6", "#c026d3"], violet: ["#a78bfa", "#6d28d9"],
+    blue: ["#60a5fa", "#2563eb"], teal: ["#2dd4bf", "#0d9488"], green: ["#4ade80", "#16a34a"], grey: ["#94a3b8", "#475569"] };
+  const BUILTIN_COLORS = { bright: "amber", movie: "violet", night: "coral", off: "grey" };
+  const sceneColor = (s) => SCENE_COLORS[s.color || BUILTIN_COLORS[s.id]];
+  const OFF_AFTER = [0, 5, 10, 15, 20, 30, 45, 60, 90, 120];
+  const fmtMins = (m) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`);
+  let offs = {};  // { sceneId: epoch ms when its lights go off }
 
   // Which other devices are set up, so the editor only offers those.
   const has = {
@@ -37,15 +45,25 @@
     if (s.screen) parts.push(`Screen ${s.screen.power}`);
     if (s.nest) parts.push(s.nest.mode === "ECO" ? "Nest Eco" : s.nest.mode === "OFF" ? "Nest off" : s.nest.temp ? `Nest ${showTemp(s.nest.temp)}` : "Nest");
     if (s.cams) parts.push(`Cameras ${s.cams.power}`);
+    if (s.offAfter) parts.push(`off after ${fmtMins(s.offAfter)}`);
     return parts.join(" · ") || "Nothing set yet";
   }
   function renderScenes() {
-    const html = scenes.map((s) => `
-      <div class="scene glass mine" data-run="${esc(s.id)}" role="button" tabindex="0" style="--sc: var(--grad); --sc0: var(--a1)">
+    const html = scenes.map((s) => {
+      const c = sceneColor(s), left = offs[s.id] ? Math.max(1, Math.ceil((offs[s.id] - Date.now()) / 60000)) : 0;
+      return `
+      <div class="scene glass mine" data-run="${esc(s.id)}" role="button" tabindex="0" style="${c ? `--sc: linear-gradient(135deg, ${c[0]}, ${c[1]}); --sc0: ${c[1]}` : "--sc: var(--grad); --sc0: var(--a1)"}">
         <button class="scene-edit" data-edit="${esc(s.id)}" aria-label="Edit ${esc(s.name)}">${svg('<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>')}</button>
         <span class="ic">${svg(s.icon || "star")}</span><b>${esc(s.name)}</b><span>${esc(summary(s))}</span>
-      </div>`).join("") + `<button class="scene new-scene" data-new>${svg("plus")}<b>New scene</b><span>Lights, TV, Nest, cameras…</span></button>`;
+        ${left ? `<span class="sc-left">${svg("clock")}Off in ${fmtMins(left)}<button data-stop="${esc(s.id)}" aria-label="Keep the lights on">${svg("x")}</button></span>` : ""}
+      </div>`;
+    }).join("") + `<button class="scene new-scene" data-new>${svg("plus")}<b>New scene</b><span>Lights, TV, Nest, cameras…</span></button>`;
     document.querySelectorAll(".scenes-grid").forEach((g) => (g.innerHTML = html));
+  }
+  // Countdowns live natively; ask again after a run and every 30 s while Scenes is open.
+  async function loadOffs() {
+    try { offs = (await Lights.getSceneOffs()).offs || {}; } catch { offs = {}; }
+    renderScenes();
   }
 
   async function run(s, trying) {
@@ -54,9 +72,10 @@
     try {
       const r = await Lights.runScene({ scene: s });
       House.byId("lights")?.applyScene?.(s);
+      loadOffs();
       const failed = r.failed || [];
       if (failed.length) toast(`${s.name}: ${failed.join(", ")} didn't answer`, true);
-      else toast(trying ? "That's how it looks" : s.name);
+      else toast(trying ? "That's how it looks" : s.offAfter ? `${s.name}: off in ${fmtMins(s.offAfter)}` : s.name);
     } catch { toast("Couldn't run the scene", true); }
   }
 
@@ -78,6 +97,9 @@
       <h3>${old ? "Edit scene" : "New scene"}</h3>
       <label class="fld">Name<input class="field" id="scName" maxlength="24" placeholder="Leaving" value="${esc(draft.name)}"></label>
       <div class="icon-pick" id="scIcons">${SCENE_ICONS.map((i) => `<button data-icon="${i}" aria-label="${i}">${svg(i)}</button>`).join("")}</div>
+      <div class="color-pick" id="scColors">${Object.entries(SCENE_COLORS).map(([k, c]) => `<button data-color="${k}" aria-label="${k}" style="background:linear-gradient(135deg, ${c[0]}, ${c[1]})"></button>`).join("")}</div>
+      <label class="fld" style="margin-top:14px">Turn off after<select class="field" id="scOff">${OFF_AFTER.map((m) => `<option value="${m}" ${m === (draft.offAfter || 0) ? "selected" : ""}>${m ? fmtMins(m) : "Don't turn off"}</option>`).join("")}</select></label>
+      <p class="note" style="margin-top:6px">The lights this scene turns on go off by themselves after that, even with the app closed.</p>
       <div class="label" style="margin-top:18px">Lights</div>
       <button class="ghost center" id="scCopy">Copy how the lights are now</button>
       <div id="scRows"></div>
@@ -88,8 +110,15 @@
       </div>
       ${old ? `<div class="list"><button class="ghost center danger" id="scDelete">Delete scene</button></div>` : ""}`);
     House.onSheetClose = () => { draft = null; };
-    const paintIcons = () => body.querySelectorAll("[data-icon]").forEach((b) => b.classList.toggle("on", b.dataset.icon === draft.icon));
+    const paintIcons = () => {
+      const c = sceneColor(draft) || ["var(--a1)", "var(--a2)"];
+      body.querySelector("#scIcons").style.setProperty("--pick", `linear-gradient(135deg, ${c[0]}, ${c[1]})`);
+      body.querySelectorAll("[data-icon]").forEach((b) => b.classList.toggle("on", b.dataset.icon === draft.icon));
+      body.querySelectorAll("[data-color]").forEach((b) => b.classList.toggle("on", b.dataset.color === (draft.color || BUILTIN_COLORS[draft.id])));
+    };
     paintIcons();
+    body.querySelector("#scColors").onclick = (e) => { const b = e.target.closest("[data-color]"); if (b) { buzz(6); draft.color = b.dataset.color; paintIcons(); } };
+    body.querySelector("#scOff").onchange = (e) => { const m = +e.target.value; if (m) draft.offAfter = m; else delete draft.offAfter; };
     body.querySelector("#scIcons").onclick = (e) => { const b = e.target.closest("[data-icon]"); if (b) { buzz(6); draft.icon = b.dataset.icon; paintIcons(); } };
     body.querySelector("#scName").oninput = (e) => (draft.name = e.target.value);
     body.querySelector("#scCopy").onclick = () => { buzz(); draft.lights = snapshot(); paintRows(); toast("Copied from the lights"); };
@@ -473,7 +502,8 @@
         <p class="note">Puts back Bright, Movie, Night light and All off if you deleted them. Your own scenes stay.</p></div>`,
     guide: [
       ["star", "Scenes", "Tap a scene to run it. Bright, Movie, Night light and All off come with the app; change or delete them like your own."],
-      ["plus", "Make a scene", "New scene → a name and an icon, then each light On (with its brightness), Off, or Leave as it is. Add the TV (on/off, an app, volume), the Samsung screen, Nest (mode and temperature, or Eco) and the cameras. Try it before saving."],
+      ["plus", "Make a scene", "New scene → a name, an icon and its colour, then each light On (with its brightness), Off, or Leave as it is. Add the TV (on/off, an app, volume), the Samsung screen, Nest (mode and temperature, or Eco) and the cameras. Try it before saving."],
+      ["power", "Timed scenes", "In a scene, Turn off after (5 min to 2 h) switches its lights back off by themselves, even with the app closed. Example: Movie-eat, living room on for 20 min. The card shows Off in … with ✕ to keep the lights on; another scene that sets those lights cancels it for them."],
       ["clock", "Timers", "Run any scene at a time, or before/after sunset or sunrise, on the days you pick (none = every day). Lights can fade in slowly for a gentle wake-up."],
       ["sun", "Sunset and sunrise", "Set your city once in Settings. The timers then follow the sun through the year."],
       ["moon", "Bedtime", "Turns every light off at the same time each night."],
@@ -482,6 +512,13 @@
       // One listener for both copies (Home and Lights).
       document.addEventListener("click", (e) => {
         if (e.target.closest(".scenes-grid")) {
+          const stop = e.target.closest("[data-stop]");
+          if (stop) {
+            buzz(6);
+            Lights.cancelSceneOff({ id: stop.dataset.stop }).then(loadOffs).catch(() => {});
+            toast("The lights stay on");
+            return;
+          }
           const ed = e.target.closest("[data-edit]");
           if (ed) { buzz(6); openScene(ed.dataset.edit); return; }
           if (e.target.closest("[data-new]")) { buzz(6); openScene(null); return; }
@@ -539,7 +576,8 @@
         try { scenes = (await Lights.restoreScenes()).scenes || []; renderScenes(); renderTimers(); toast("Built-in scenes are back"); }
         catch { toast("Couldn't restore them", true); }
       };
-      Lights.getScenes().then((r) => { scenes = r.scenes || []; renderScenes(); renderTimers(); }).catch(() => {});
+      Lights.getScenes().then((r) => { scenes = r.scenes || []; renderScenes(); renderTimers(); loadOffs(); }).catch(() => {});
+      setInterval(() => { if (!document.hidden && Object.keys(offs).length && document.querySelector(".scenes-grid")?.offsetParent) loadOffs(); }, 30000);
       Lights.getTimers().then((r) => { timers = r.timers || []; renderTimers(); }).catch(() => {});
       Lights.getBedtime().then(showBedtime).catch(() => {});
       const L = loc();
@@ -547,7 +585,7 @@
       paintCity();
     },
     onShow(tab) {
-      if (tab === "scenes") renderScenes();
+      if (tab === "scenes") loadOffs();
       if (tab === "timers") renderTimers();
       if (tab === "settings") paintCity();
     },

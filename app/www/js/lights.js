@@ -22,7 +22,9 @@ const Lights = plugin("Lights", (() => {
     setVacation: async (v) => (store.setJson("mock.vac", { ...v, next: v.on ? Date.now() + 3600e3 : 0 }), store.json("mock.vac")),
     getScenes: async () => ({ scenes: store.json("mock.scenes", null) || MOCK_BUILTINS }), setScenes: async ({ scenes }) => store.setJson("mock.scenes", scenes),
     restoreScenes: async () => { const s = store.json("mock.scenes", []); const out = [...MOCK_BUILTINS.filter((b) => !s.some((x) => x.id === b.id)), ...s]; store.setJson("mock.scenes", out); return { scenes: out }; },
-    runScene: async () => ({ failed: [] }), setCreds: async () => {}, setLocation: async () => {},
+    runScene: async ({ scene }) => { if (scene.offAfter && scene.id) store.setJson("mock.offs", { ...store.json("mock.offs", {}), [scene.id]: Date.now() + scene.offAfter * 60e3 }); return { failed: [] }; },
+    getSceneOffs: async () => ({ offs: store.json("mock.offs", {}) }), cancelSceneOff: async ({ id }) => { const o = store.json("mock.offs", {}); delete o[id]; store.setJson("mock.offs", o); },
+    setCreds: async () => {}, setLocation: async () => {},
     getTimers: async () => ({ timers: store.json("mock.timers", []), next: 0 }), setTimers: async ({ timers }) => (store.setJson("mock.timers", timers), { timers, next: 0 }),
     appVersion: async () => ({ version: "dev" }), openUrl: async () => { throw new Error("browser"); }, setTheme: async () => {},
   };

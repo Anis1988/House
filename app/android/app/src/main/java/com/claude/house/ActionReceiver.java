@@ -77,6 +77,17 @@ public class ActionReceiver extends BroadcastReceiver {
             }).start();
             return;
         }
+        if (SceneOffs.ACTION.equals(intent.getAction())) {
+            PendingResult result = goAsync();
+            worker.execute(() -> {
+                try {
+                    SceneOffs.fire(app);
+                } finally {
+                    result.finish();
+                }
+            });
+            return;
+        }
         if (SceneTimers.ACTION.equals(intent.getAction())) {
             PendingResult result = goAsync();
             worker.execute(() -> {

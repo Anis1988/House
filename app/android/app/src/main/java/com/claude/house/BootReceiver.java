@@ -12,6 +12,7 @@ public class BootReceiver extends BroadcastReceiver {
         if (!Intent.ACTION_BOOT_COMPLETED.equals(a) && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)) return;
         Bedtime.schedule(ctx);
         SceneTimers.schedule(ctx);
+        SceneOffs.schedule(ctx);
         WifiWatch.schedule(ctx);
         Presence.register(ctx);
         NestWatch.schedule(ctx);

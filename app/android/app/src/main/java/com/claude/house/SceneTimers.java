@@ -116,6 +116,7 @@ final class SceneTimers {
                 failed.add("Lights");
             }
         }
+        if (!failed.contains("Lights")) SceneOffs.after(ctx, scene);
         failed.addAll(HouseActions.run(ctx, scene));
         return failed;
     }

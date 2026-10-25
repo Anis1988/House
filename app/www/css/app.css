@@ -450,3 +450,13 @@ nav button.on svg { color: var(--at); }
 .toast.glass { background: var(--toast-bg); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.err { border-color: color-mix(in srgb, var(--bad) 55%, transparent); color: var(--bad); }
+
+/* Scene colours and timed scenes */
+.icon-pick button.on { background: var(--pick, var(--grad)); }
+.color-pick { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; margin-top: 10px; }
+.color-pick button { aspect-ratio: 1; border-radius: 50%; border: 3px solid transparent; outline: 2px solid transparent; }
+.color-pick button.on { border-color: var(--bg, #fff); outline-color: var(--text, #fff); }
+.sc-left { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; margin-top: -2px !important; padding: 4px 4px 4px 9px; border-radius: 999px; font-size: 12px !important; font-weight: 600; color: var(--text) !important; background: color-mix(in srgb, var(--sc0) 22%, transparent); }
+.sc-left svg { width: 14px; height: 14px; }
+.sc-left button { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--glass); border: 1px solid var(--edge); color: var(--text); }
+.sc-left button svg { width: 12px; height: 12px; }

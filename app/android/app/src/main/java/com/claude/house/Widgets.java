@@ -190,8 +190,33 @@ final class Widgets {
     }
 
     private static final int[] S = {R.id.wl_s0, R.id.wl_s1, R.id.wl_s2, R.id.wl_s3, R.id.wl_s4, R.id.wl_s5, R.id.wl_s6, R.id.wl_s7};
+    private static final int[] SB = {R.id.wl_sb0, R.id.wl_sb1, R.id.wl_sb2, R.id.wl_sb3, R.id.wl_sb4, R.id.wl_sb5, R.id.wl_sb6, R.id.wl_sb7};
     private static final int[] SI = {R.id.wl_si0, R.id.wl_si1, R.id.wl_si2, R.id.wl_si3, R.id.wl_si4, R.id.wl_si5, R.id.wl_si6, R.id.wl_si7};
     private static final int[] ST = {R.id.wl_st0, R.id.wl_st1, R.id.wl_st2, R.id.wl_st3, R.id.wl_st4, R.id.wl_st5, R.id.wl_st6, R.id.wl_st7};
+
+    /** A scene's icon colour (picked in the app; built-ins have their own), as its badge drawable. */
+    static int badge(JSONObject scene) {
+        String c = scene.optString("color");
+        if (c.isEmpty()) {
+            switch (scene.optString("id")) {
+                case "bright": c = "amber"; break;
+                case "movie": c = "violet"; break;
+                case "night": c = "coral"; break;
+                case "off": c = "grey"; break;
+            }
+        }
+        switch (c) {
+            case "amber": return R.drawable.wl_badge_amber;
+            case "coral": return R.drawable.wl_badge_coral;
+            case "pink": return R.drawable.wl_badge_pink;
+            case "violet": return R.drawable.wl_badge_violet;
+            case "blue": return R.drawable.wl_badge_blue;
+            case "teal": return R.drawable.wl_badge_teal;
+            case "green": return R.drawable.wl_badge_green;
+            case "grey": return R.drawable.wl_badge_grey;
+            default: return R.drawable.wl_badge;
+        }
+    }
 
     static int icon(String name) {
         switch (name == null ? "" : name) {
@@ -225,6 +250,7 @@ final class Widgets {
             JSONObject s = all.optJSONObject(index);
             v.setTextViewText(ST[i], s.optString("name"));
             v.setImageViewResource(SI[i], icon(s.optString("icon")));
+            v.setImageViewResource(SB[i], badge(s));
             v.setOnClickPendingIntent(S[i], tap(ctx, "scene", s.optString("id")));
         }
         v.setOnClickPendingIntent(R.id.wl_head, open(ctx));

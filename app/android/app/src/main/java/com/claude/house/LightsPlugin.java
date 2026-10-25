@@ -27,6 +27,7 @@ public class LightsPlugin extends Plugin {
     public void load() {
         Bedtime.schedule(getContext());
         SceneTimers.schedule(getContext());
+        SceneOffs.schedule(getContext());
         Presence.register(getContext());
         NestWatch.schedule(getContext());
         WifiLog.schedule(getContext());
@@ -75,6 +76,25 @@ public class LightsPlugin extends Plugin {
             r.put("failed", new JSArray(failed));
             call.resolve(r);
         });
+    }
+
+    /** Timed scenes counting down. → { offs: { sceneId: epoch ms } } */
+    @PluginMethod
+    public void getSceneOffs(PluginCall call) {
+        try {
+            JSObject r = new JSObject();
+            r.put("offs", new JSObject(SceneOffs.countdowns(getContext()).toString()));
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** { id } stops a scene's countdown; its lights stay as they are. */
+    @PluginMethod
+    public void cancelSceneOff(PluginCall call) {
+        SceneOffs.cancel(getContext(), call.getString("id", ""));
+        call.resolve();
     }
 
     /** Puts the built-in scenes back if any were deleted. → { scenes } */
