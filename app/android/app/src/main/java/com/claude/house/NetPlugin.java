@@ -408,6 +408,7 @@ public class NetPlugin extends Plugin {
             JSObject r = new JSObject();
             r.put("settings", new JSObject(WifiWatch.settings(getContext()).toString()));
             r.put("presence", new JSObject(WifiWatch.presence(getContext()).toString()));
+            r.put("atHome", Presence.atHome(getContext()));
             r.put("notifications", Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED);
             call.resolve(r);
         } catch (Exception e) {

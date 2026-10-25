@@ -23,6 +23,11 @@
   const left = (at) => { const m = Math.max(1, Math.round((at - Date.now()) / 60000)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min` : ""}`.trim(); };
   const bytes = (b) => b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${Math.round(b / 1e6)} MB` : `${Math.round(b / 1e3)} KB`;
 
+  // Away from home: the last known state, with when it was seen. Kept on this phone.
+  const away = () => House.wifiAway?.() === true;
+  let showingCache = { control: false, tools: false };
+  const awayNote = (at) => `<div class="card glass away-note"><b>You're away from home</b><p class="note" style="margin:4px 0 0">Showing how things were ${at ? `at ${House.wifiAsOf(at)}` : "last time"}. Changes need the home Wi-Fi (or a VPN to your router).</p></div>`;
+
   async function R(op, args = {}, quiet) {
     try { return await Net.router({ op, ...args }); }
     catch (e) { if (!quiet) toast(e.message || "The router didn't answer", true); throw e; }
@@ -44,6 +49,7 @@
   const controlHtml = `
     <div class="card glass" id="wcNeed" hidden><div class="head-card"><div class="grow"><b>Sign in to your router</b><p class="note" style="margin:4px 0 0">These controls work through your ASUS router. Wi-Fi → Settings → Router.</p></div></div></div>
     <div id="wcBody">
+      <div id="wcAway"></div>
       <div class="label">Right now</div>
       <div class="card glass" id="wcNow"><p class="note" style="margin:0">Checking the router…</p></div>
       <div class="label">Profiles</div>
@@ -86,11 +92,19 @@
 
   async function loadControl() {
     if (!signed()) { paintControl(); return; }
+    const cache = store.json("wifi.ctl", null);
+    if (away() && cache) { ({ filters, status, guest } = cache); showingCache.control = cache.at; paintControl(); }
     const [f, s, g] = await Promise.allSettled([R("filters", {}, true), R("status", {}, true), R("guest", {}, true)]);
-    if (f.status === "fulfilled") filters = f.value;
+    if (f.status === "rejected") {
+      if (away()) { if (!cache) { showingCache.control = 0; paintControl(); } return; } // keep the last known
+      toast(f.reason?.message || "Couldn't reach the router", true);
+    } else {
+      filters = f.value;
+      showingCache.control = false;
+    }
     if (s.status === "fulfilled") status = s.value;
     guest = g.status === "fulfilled" ? g.value : { error: g.reason?.message };
-    if (f.status === "rejected") toast(f.reason?.message || "Couldn't reach the router", true);
+    if (f.status === "fulfilled") store.setJson("wifi.ctl", { filters, status, guest: guest.error ? null : guest, at: Date.now() });
     paintControl();
   }
 
@@ -99,6 +113,8 @@
     $("wcNeed").hidden = signed();
     $("wcBody").hidden = !signed();
     if (!signed()) return;
+    $("wcBody").classList.toggle("away", showingCache.control !== false);
+    $("wcAway").innerHTML = showingCache.control !== false ? awayNote(showingCache.control) : "";
     paintNow();
     paintProfiles();
     $("wcFocusWho").innerHTML = whoOptions($("wcFocusWho").value);
@@ -247,10 +263,18 @@
   async function loadTools() {
     paintSignal();
     if (!signed()) { paintHealth(); paintUsage(); return; }
+    const cache = store.json("wifi.tools", null);
+    if (away() && cache) { ({ health, reboot, usage } = cache); showingCache.tools = cache.at; paintHealth(); paintUsage(); }
     const [h, rb, u] = await Promise.allSettled([R("health", {}, true), R("rebootSchedule", {}, true), R("usage", { dura: usageDura }, true)]);
+    if (h.status === "rejected" && away()) {
+      if (!cache) { health = { error: "You're away from home. The router can only be reached from the home Wi-Fi (or a VPN to it)." }; usage = { error: "Away from home: no data use until you're back." }; paintHealth(); paintUsage(); }
+      return;
+    }
+    showingCache.tools = false;
     health = h.status === "fulfilled" ? h.value : { error: h.reason?.message };
     reboot = rb.status === "fulfilled" ? rb.value : null;
     usage = u.status === "fulfilled" ? u.value : { error: u.reason?.message };
+    if (h.status === "fulfilled") store.setJson("wifi.tools", { health, reboot, usage: usage.error ? null : usage, at: Date.now() });
     paintHealth();
     paintUsage();
   }
@@ -263,7 +287,8 @@
     if (health.error) { box.innerHTML = `<p class="note" style="margin:0">${esc(health.error)}</p>`; return; }
     const h = health, r = reboot || { on: false, days: "1000000", time: "0300" };
     const day = Math.max(0, r.days.indexOf("1"));
-    box.innerHTML = `
+    box.classList.toggle("away", showingCache.tools !== false);
+    box.innerHTML = (showingCache.tools !== false ? `<p class="note" style="margin-top:0"><b>You're away</b> · as of ${House.wifiAsOf(showingCache.tools)}</p>` : "") + `
       <div class="head-card"><div class="grow"><b>${esc(h.model || "ASUS router")}</b><div class="status-line"><span class="dot ${h.update ? "bad" : "on"}"></span>${h.update ? `Update ready: ${esc(h.update)}` : `Firmware ${esc(h.firmware)}`}</div></div><button class="round-btn glass" id="wcHRefresh" aria-label="Check again">${svg("refresh")}</button></div>
       <div class="stats" style="margin-top:10px">
         <div class="stat glass"><b>${h.cpu ?? "—"}%</b><span>CPU</span></div>
@@ -287,7 +312,7 @@
     const box = $("wcUsage");
     if (!box) return;
     if (!signed()) { box.innerHTML = `<p class="note" style="margin:0">Sign in to your router (Settings) to see how much each device uses.</p>`; return; }
-    if (!usage) { box.innerHTML = `<p class="note" style="margin:0">Asking the router…</p>`; return; }
+    if (!usage) { box.innerHTML = `<p class="note" style="margin:0">${showingCache.tools !== false ? "No data use saved from home yet." : "Asking the router…"}</p>`; return; }
     if (usage.error) { box.innerHTML = `<p class="note" style="margin:0">${esc(usage.error)}</p>`; return; }
     if (!usage.enabled) { box.innerHTML = `<p class="note" style="margin-top:0">Your router isn't counting data yet. Turn on its Traffic Analyzer to see who uses the most; it starts counting from now.</p><div class="list"><button class="primary full" id="wcUseOn">Turn on data tracking</button></div>`; return; }
     const seg = `<div class="mini-seg" id="wcUseDura"><button data-ud="24" class="${usageDura === 24 ? "on" : ""}">Today</button><button data-ud="7" class="${usageDura === 7 ? "on" : ""}">7 days</button><button data-ud="live" class="${liveOn ? "on" : ""}">Live</button></div>`;

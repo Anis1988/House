@@ -86,8 +86,22 @@
     }).filter((d) => d.ip || d.online);
   }
 
+  // Away from the home Wi-Fi nothing at home can be seen, so the last list stays, with its time.
+  const away = () => watch.atHome === false;
+  const asOf = (t) => !t ? "" : new Date(t).toDateString() === new Date().toDateString()
+    ? new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : new Date(t).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+  House.wifiAway = away;
+  House.wifiAsOf = asOf;
+
   async function load(manual) {
     if (busy) return;
+    try { watch = await Net.getWatch(); } catch {}
+    if (away()) {
+      // Through a VPN the router may still answer: try it quietly, otherwise keep the last list.
+      if (!router().pass) { if (manual) toast("You're away from home. This is the last list.", true); paint(); return; }
+      try { await Net.router({ op: "clients" }); } catch { if (manual) toast("You're away from home. This is the last list.", true); paint(); return; }
+    }
     busy = true;
     $("wfRefresh").classList.add("spin");
     $("wfSub").textContent = "Looking…";
@@ -134,6 +148,7 @@
         return { ...d, maker, kind, kindName, label: own[(d.mac || "").toLowerCase()] || own[d.ip] || d.name || (maker && !maker.startsWith("Private") ? `${maker} device` : kindName === "Device" ? "Unknown device" : kindName) };
       }).sort((a, b) => (b.online - a.online) || ipNum(a.ip) - ipNum(b.ip));
       store.setJson("wifi.last", devices);
+      store.set("wifi.lastAt", String(Date.now()));
       scannedAt = Date.now();
       if (manual) toast(`${devices.filter((d) => d.online).length} devices on your Wi-Fi`);
     } catch (e) { toast(e.message || "Couldn't scan the network", true); }
@@ -148,7 +163,9 @@
     const f = filter.toLowerCase();
     const list = devices.filter((d) => !f || `${d.label} ${d.ip} ${d.maker} ${d.mac} ${d.hint}`.toLowerCase().includes(f));
     const on = devices.filter((d) => d.online).length;
-    $("wfSub").innerHTML = `<span class="dot ${on ? "on" : ""}"></span>` + (busy ? "Looking…" : devices.length ? `${on} online · ${router().pass ? "from your router" : "found by the app"}` : "Tap refresh to look");
+    $("wfSub").innerHTML = away() && !busy
+      ? `<span class="dot"></span>You're away · ${devices.length ? `last list from ${asOf(+store.get("wifi.lastAt", 0))}` : "nothing seen yet"}`
+      : `<span class="dot ${on ? "on" : ""}"></span>` + (busy ? "Looking…" : devices.length ? `${on} online · ${router().pass ? "from your router" : "found by the app"}` : "Tap refresh to look");
     $("wfList").innerHTML = GROUPS.map(([title, kinds]) => {
       const ds = list.filter((d) => kinds.includes(d.kind));
       if (!ds.length) return "";
@@ -356,6 +373,7 @@
     };
     if (side) body.querySelector("#devOpen").onclick = () => House.show(side.id);
     body.querySelector("#devPause")?.addEventListener("click", async (e) => {
+      if (away()) { toast("Pausing needs the home Wi-Fi", true); return; }
       const pause = !paused.has(d.mac.toLowerCase());
       if (pause && !confirm(`Cut the internet for ${d.label}? It stays connected to the Wi-Fi.`)) return;
       e.currentTarget.disabled = true;
