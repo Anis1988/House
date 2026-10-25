@@ -216,6 +216,8 @@
     const fresh = Date.now() - scannedAt < 5 * 60e3;
     const d = fresh && devices.find((x) => ((x.mac || "").toLowerCase() || x.ip) === p.key || x.ip === p.key);
     if (d?.online) return { home: true, since: st?.since };
+    // The router's fresh list says the phone isn't connected: away, even before the background check agrees.
+    if (fresh && router().pass && d && !d.online) return { home: false, since: st?.home ? scannedAt : st?.since };
     // Not checked for over 30 min (this phone was away or asleep): say when it was last seen.
     const seen = st?.seenAt || st?.since || 0;
     if (st?.home && Date.now() - seen > 30 * 60e3) return { home: false, stale: true, seen };
@@ -248,7 +250,7 @@
     $("wfThisPhone").hidden = people().some((p) => p.key === "this-phone");
     $("wfHistOn").classList.toggle("on", !!s.history);
     $("wfOutOn").classList.toggle("on", !!s.outages);
-    $("wfPeople").innerHTML = people().length ? people().map((p) => `<div class="set-row"><div class="set-text"><b>${esc(p.name)}</b><span>${p.key === "this-phone" ? "This phone · updates right away" : esc(p.key) + " · checked every 15 min"}</span></div><button class="ghost center auto danger" data-unperson="${esc(p.key)}">Remove</button></div>`).join("")
+    $("wfPeople").innerHTML = people().length ? people().map((p) => `<div class="set-row"><div class="set-text"><b>${esc(p.name)}</b><span>${p.key === "this-phone" ? "This phone · updates right away" : esc(p.key) + (router().pass ? " · checked every ~5 min" : " · checked every ~15 min")}</span></div><button class="ghost center auto danger" data-unperson="${esc(p.key)}">Remove</button></div>`).join("")
       : `<p class="note" style="margin:0">No one yet. On the Devices tab, tap someone's phone and choose “This is a person's phone”.</p>`;
     const sc = await scenesList();
     const opts = (val) => `<option value="">Nothing</option>` + sc.map((x) => `<option value="custom:${esc(x.id)}" ${val === `custom:${x.id}` ? "selected" : ""}>${esc(x.name)}</option>`).join("");
@@ -414,7 +416,7 @@
         <label class="fld">When someone gets home, run<select class="field" id="wfArrive"></select></label>
         <label class="fld">When everyone has left, run<select class="field" id="wfLeave"></select></label>
         <p class="note err" id="wfNoCloud" hidden>Once your phone is off the home Wi-Fi it can't reach the bulbs. Add a LIFX cloud token in <b>Lights → Settings</b>, or the lights won't change when you leave.</p>
-        <p class="note">Checked about every 15 min, so it can take a little while. Someone counts as gone after their phone is missing twice in a row. Phones with “private Wi-Fi address” turned off for this network are recognised more reliably. Lights can only be reached from the home Wi-Fi: for a leave scene, add a LIFX cloud token in Lights → Settings.</p>
+        <p class="note">With the router signed in, checked about every 5 min, and someone counts as gone as soon as their phone is off the Wi-Fi. Without it, about every 15 min, and gone after their phone is missing twice in a row. Opening this side checks right away. Phones with “private Wi-Fi address” turned off for this network are recognised more reliably. Lights can only be reached from the home Wi-Fi: for a leave scene, add a LIFX cloud token in Lights → Settings.</p>
       </div>
       <div class="label">Lights react</div>
       <div class="card glass">
@@ -524,7 +526,11 @@
       if (tab === "devices" && !busy && !devices.length) load(); else paint();
       if (tab === "history") loadLog();
       if (tab === "devices" && router().pass) loadPaused().then(paint);
-      if (tab === "devices" && people().length) Net.checkPresence().then((w) => { watch = w; paintHome(); }).catch(() => {});
+      if (tab === "devices" && people().length) {
+        // This phone first (instant), then everyone else through a full check, so leaving shows right away.
+        Net.checkPresence().then((w) => { watch = w; paintHome(); }).catch(() => {});
+        if (people().some((p) => p.key !== "this-phone")) Net.checkWatch().then((w) => { watch = w; paintHome(); }).catch(() => {});
+      }
     },
   });
 })();

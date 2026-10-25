@@ -102,6 +102,37 @@ final class Asus {
         }
     }
 
+    private static final Pattern MAC = Pattern.compile("(?i)\\b[0-9a-f]{2}(:[0-9a-f]{2}){5}\\b");
+
+    /**
+     * The router's device list, with "isOnline" corrected for Wi-Fi devices: the list keeps a phone
+     * "online" for a good while after it left, so a Wi-Fi device only counts if it's in the list of
+     * devices connected to the Wi-Fi right now (get_wclientlist). Routers without that list: as is.
+     * Each entry also gets "live": true when that check could be made.
+     */
+    static JSONObject clients(Context ctx) throws Exception {
+        JSONObject j = hook(ctx, "get_clientlist();get_wclientlist()");
+        JSONObject list = j.optJSONObject("get_clientlist");
+        if (list == null) return new JSONObject();
+        java.util.Set<String> assoc = new java.util.HashSet<>();
+        Object w = j.opt("get_wclientlist");
+        if (w != null) {
+            Matcher m = MAC.matcher(w.toString());
+            while (m.find()) assoc.add(m.group().toUpperCase(java.util.Locale.ROOT));
+        }
+        if (assoc.isEmpty()) return list;
+        for (java.util.Iterator<String> it = list.keys(); it.hasNext(); ) {
+            String mac = it.next();
+            JSONObject d = list.optJSONObject(mac);
+            if (d == null || !MAC.matcher(mac).matches()) continue;
+            String wl = d.optString("isWL", "0");
+            if (wl.isEmpty() || "0".equals(wl)) continue; // wired: the router's own word
+            d.put("live", true);
+            if (!assoc.contains(mac.toUpperCase(java.util.Locale.ROOT))) d.put("isOnline", "0");
+        }
+        return list;
+    }
+
     /** Several router settings at once. Missing ones come back as "". */
     static JSONObject nvram(Context ctx, String... keys) throws Exception {
         StringBuilder h = new StringBuilder();

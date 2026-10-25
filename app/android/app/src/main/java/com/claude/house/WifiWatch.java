@@ -69,23 +69,38 @@ final class WifiWatch {
         return PendingIntent.getBroadcast(ctx, 4, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
-    /** Inexact on purpose: Android batches it with other wake-ups, so it costs little battery. */
+    /**
+     * Inexact on purpose: Android batches it with other wake-ups, so it costs little battery.
+     * Every ~5 minutes with the router signed in and people to watch (one quick question to the
+     * router), otherwise every ~15 (a network sweep).
+     */
     static void schedule(Context ctx) {
         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         PendingIntent pi = intent(ctx);
         am.cancel(pi);
         if (!wanted(ctx)) return;
-        am.setInexactRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + AlarmManager.INTERVAL_FIFTEEN_MINUTES,
-            AlarmManager.INTERVAL_FIFTEEN_MINUTES, pi);
+        JSONArray people = settings(ctx).optJSONArray("people");
+        long every = Asus.signedIn(ctx) && people != null && people.length() > 0 ? 5 * 60_000L : AlarmManager.INTERVAL_FIFTEEN_MINUTES;
+        am.setInexactRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + every, every, pi);
     }
+
+    // True when the last check knew exactly which phones are on the Wi-Fi right now (the router's
+    // connected-devices list). Then one miss is enough to call someone gone.
+    private static volatile boolean liveCheck;
 
     /** What's on the network now: key (MAC, or address without the router) → { name, ip }. Blocking. */
     static Map<String, JSONObject> online(Context ctx) {
         Map<String, JSONObject> out = new HashMap<>();
         JSONObject c = HouseActions.creds(ctx);
+        liveCheck = false;
         if (!c.optString("routerPass").isEmpty()) {
             try {
-                for (JSONObject d : routerClients(ctx, c)) if (d.optBoolean("online")) out.put(d.optString("mac").toLowerCase(), d);
+                boolean live = false;
+                for (JSONObject d : routerClients(ctx, c)) {
+                    live |= d.optBoolean("live");
+                    if (d.optBoolean("online")) out.put(d.optString("mac").toLowerCase(), d);
+                }
+                liveCheck = live;
                 return out;
             } catch (Exception e) {
                 Log.w(TAG, "router", e);
@@ -103,9 +118,8 @@ final class WifiWatch {
     }
 
     private static List<JSONObject> routerClients(Context ctx, JSONObject c) throws Exception {
-        JSONObject list = Asus.hook(ctx, "get_clientlist()").optJSONObject("get_clientlist");
+        JSONObject list = Asus.clients(ctx);
         List<JSONObject> out = new ArrayList<>();
-        if (list == null) return out;
         for (Iterator<String> it = list.keys(); it.hasNext(); ) {
             String mac = it.next();
             JSONObject d = list.optJSONObject(mac);
@@ -113,7 +127,7 @@ final class WifiWatch {
             String name = d.optString("nickName");
             if (name.isEmpty()) name = d.optString("name");
             out.add(new JSONObject().put("mac", mac).put("ip", d.optString("ip")).put("name", name)
-                .put("vendor", d.optString("vendor")).put("online", "1".equals(d.optString("isOnline"))));
+                .put("vendor", d.optString("vendor")).put("online", "1".equals(d.optString("isOnline"))).put("live", d.optBoolean("live")));
         }
         return out;
     }
@@ -192,7 +206,7 @@ final class WifiWatch {
                 } else {
                     int misses = st.optInt("misses") + 1;
                     st.put("misses", misses);
-                    if (wasHome && misses >= 2) { st.put("home", false).put("since", System.currentTimeMillis()); someoneLeft = true; }
+                    if (wasHome && misses >= (liveCheck ? 1 : 2)) { st.put("home", false).put("since", System.currentTimeMillis()); someoneLeft = true; }
                 }
                 state.put(key, st);
             }

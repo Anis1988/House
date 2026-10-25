@@ -48,7 +48,7 @@ final class RouterControl {
     /** From the page: { op, ... } → result. Blocking. */
     static JSONObject op(Context ctx, JSONObject a) throws Exception {
         switch (a.optString("op")) {
-            case "clients": return new JSONObject().put("get_clientlist", Asus.hook(ctx, "get_clientlist()").optJSONObject("get_clientlist"));
+            case "clients": return new JSONObject().put("get_clientlist", Asus.clients(ctx));
             case "filters": return filtersJson(ctx);
             case "block": block(ctx, macs(a), a.optJSONObject("names"), a.optBoolean("on")); return filtersJson(ctx);
             case "focus": focus(ctx, macs(a), a.optJSONObject("names"), a.optInt("minutes", 30), a.optString("label")); return status(ctx);
@@ -222,7 +222,7 @@ final class RouterControl {
     static void pauseAll(Context ctx, List<String> keep, int minutes) throws Exception {
         Set<String> skip = new HashSet<>();
         for (String k : keep) skip.add(k.toUpperCase(Locale.ROOT));
-        JSONObject list = Asus.hook(ctx, "get_clientlist()").optJSONObject("get_clientlist");
+        JSONObject list = Asus.clients(ctx);
         String gw = Asus.nvram(ctx, "lan_hwaddr").optString("lan_hwaddr").toUpperCase(Locale.ROOT);
         List<String> macs = new ArrayList<>();
         JSONObject names = new JSONObject();

@@ -125,6 +125,7 @@ public class LightsPlugin extends Plugin {
             }
             HouseActions.saveCreds(getContext(), c);
             NestWatch.schedule(getContext());
+            WifiWatch.schedule(getContext()); // every 5 or 15 min depends on the router sign-in
         }
         call.resolve();
     }
