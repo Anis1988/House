@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A button that's on: warm glow -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true"><shape android:shape="rectangle"><corners android:radius="20dp" /><solid android:color="#88FFB547" /></shape></item>
+    <item><shape android:shape="rectangle"><corners android:radius="20dp" /><solid android:color="@color/w_on_bg" /><stroke android:width="1dp" android:color="#88FFB547" /></shape></item>
+</selector>

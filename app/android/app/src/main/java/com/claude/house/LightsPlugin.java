@@ -52,6 +52,7 @@ public class LightsPlugin extends Plugin {
     @PluginMethod
     public void setScenes(PluginCall call) {
         SceneTimers.saveScenes(getContext(), call.getArray("scenes", new JSArray()));
+        Widgets.redrawAll(getContext());
         call.resolve();
     }
 
@@ -82,6 +83,7 @@ public class LightsPlugin extends Plugin {
         try {
             JSObject r = new JSObject();
             r.put("scenes", new JSArray(SceneTimers.restoreBuiltIns(getContext()).toString()));
+            Widgets.redrawAll(getContext());
             call.resolve(r);
         } catch (Exception e) {
             call.reject(e.getMessage());
@@ -129,6 +131,7 @@ public class LightsPlugin extends Plugin {
             Object from = call.getData().opt("from");
             s.put("from", from instanceof Number ? ((Number) from).intValue() : (Object) "sunset");
             VacationMode.save(getContext(), s);
+            Widgets.redrawAll(getContext());
             getVacation(call);
         } catch (Exception e) {
             call.reject(e.getMessage());
@@ -262,6 +265,7 @@ public class LightsPlugin extends Plugin {
     @PluginMethod
     public void setBedtime(PluginCall call) {
         Bedtime.set(getContext(), Boolean.TRUE.equals(call.getBoolean("on", false)), call.getInt("minutes", 23 * 60 + 30));
+        Widgets.redrawAll(getContext());
         getBedtime(call);
     }
 

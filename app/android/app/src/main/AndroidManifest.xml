@@ -37,6 +37,37 @@
                 android:resource="@xml/lights_widget_info" />
         </receiver>
 
+
+        <!-- Lights widgets -->
+        <receiver android:name=".ToggleWidget" android:exported="true" android:label="Lights on/off">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_toggle_info" />
+        </receiver>
+        <receiver android:name=".OneLightWidget" android:exported="true" android:label="One light">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_one_info" />
+        </receiver>
+        <receiver android:name=".ScenesWidget" android:exported="true" android:label="Scenes">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_scenes_info" />
+        </receiver>
+        <receiver android:name=".RoomsWidget" android:exported="true" android:label="Rooms">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_rooms_info" />
+        </receiver>
+        <receiver android:name=".BrightWidget" android:exported="true" android:label="Brightness">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_bright_info" />
+        </receiver>
+        <receiver android:name=".AwayWidget" android:exported="true" android:label="Vacation and Bedtime">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_away_info" />
+        </receiver>
+
+        <!-- Pick the bulb for a One light widget -->
+        <activity android:name=".OneLightConfig" android:exported="true" android:theme="@style/AppTheme.NoActionBar" android:excludeFromRecents="true">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
         <receiver
             android:name=".ActionReceiver"
             android:exported="false" />

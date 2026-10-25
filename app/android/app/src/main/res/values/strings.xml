@@ -5,4 +5,10 @@
     <string name="package_name">com.claude.house</string>
     <string name="custom_url_scheme">com.claude.house</string>
     <string name="widget_description">All lights on or off</string>
+    <string name="wl_desc_toggle">One tap: all lights on or off</string>
+    <string name="wl_desc_one">Tap to turn one light on or off</string>
+    <string name="wl_desc_scenes">Your scenes as buttons</string>
+    <string name="wl_desc_rooms">Each room on or off</string>
+    <string name="wl_desc_bright">All lights brighter or darker</string>
+    <string name="wl_desc_away">Vacation mode and Bedtime</string>
 </resources>

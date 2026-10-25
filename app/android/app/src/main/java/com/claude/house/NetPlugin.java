@@ -464,6 +464,37 @@ public class NetPlugin extends Plugin {
         getWatch(call);
     }
 
+    // ---- Widget check: draws a Lights widget at a size into a picture (for testing the layouts) ----
+
+    /** { kind: toggle|one|scenes|rooms|bright|away, w, h (dp) } → { dataUrl } */
+    @PluginMethod
+    public void widgetSnapshot(PluginCall call) {
+        String kind = call.getString("kind", "toggle");
+        int w = call.getInt("w", 250), h = call.getInt("h", 110);
+        getActivity().runOnUiThread(() -> {
+            try {
+                android.widget.RemoteViews rv = Widgets.preview(getContext(), kind, w, h);
+                Context plain = getContext().getApplicationContext(); // like a launcher: no app theme swaps
+                android.widget.FrameLayout parent = new android.widget.FrameLayout(plain);
+                android.view.View v = rv.apply(plain, parent);
+                float d = getContext().getResources().getDisplayMetrics().density;
+                int pw = Math.round(w * d), ph = Math.round(h * d);
+                v.measure(android.view.View.MeasureSpec.makeMeasureSpec(pw, android.view.View.MeasureSpec.EXACTLY),
+                    android.view.View.MeasureSpec.makeMeasureSpec(ph, android.view.View.MeasureSpec.EXACTLY));
+                v.layout(0, 0, pw, ph);
+                android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(pw, ph, android.graphics.Bitmap.Config.ARGB_8888);
+                v.draw(new android.graphics.Canvas(bmp));
+                java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+                bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, png);
+                JSObject out = new JSObject();
+                out.put("dataUrl", "data:image/png;base64," + Base64.encodeToString(png.toByteArray(), Base64.NO_WRAP));
+                call.resolve(out);
+            } catch (Exception e) {
+                call.reject(e.toString());
+            }
+        });
+    }
+
     // ---- Wi-Fi logs: device history and internet outages ----
 
     @PluginMethod

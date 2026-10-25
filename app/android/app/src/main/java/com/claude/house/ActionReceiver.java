@@ -14,6 +14,18 @@ public class ActionReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context ctx, Intent intent) {
         Context app = ctx.getApplicationContext();
+        if (Widgets.ACTION.equals(intent.getAction())) {
+            String op = intent.getStringExtra("op"), arg = intent.getStringExtra("arg");
+            PendingResult result = goAsync();
+            worker.execute(() -> {
+                try {
+                    Widgets.handle(app, op == null ? "" : op, arg == null ? "" : arg);
+                } finally {
+                    result.finish();
+                }
+            });
+            return;
+        }
         if (WifiLog.ACTION_NET_CHECK.equals(intent.getAction()) || VacationMode.ACTION.equals(intent.getAction())) {
             boolean net = WifiLog.ACTION_NET_CHECK.equals(intent.getAction());
             PendingResult result = goAsync();

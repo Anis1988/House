@@ -87,7 +87,12 @@ public class LightsWidget extends AppWidgetProvider {
         return v;
     }
 
+    /** Redraws this widget and all the other Lights widgets. */
     static void redraw(Context ctx) {
+        Widgets.redrawAll(ctx);
+    }
+
+    static void redrawOnly(Context ctx) {
         redraw(ctx, null);
     }
 

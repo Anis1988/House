@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/wl_root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_bg" android:orientation="vertical" android:padding="10dp">
+
+    <LinearLayout android:id="@+id/wl_head" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="4dp" android:paddingBottom="8dp">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="All lights" android:textColor="@color/w_fg" android:textSize="15sp" android:textStyle="bold" />
+        <TextView android:id="@+id/wl_status" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:maxLines="1" android:ellipsize="end" android:textColor="@color/w_fg_muted" android:textSize="12sp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="40dp" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/wl_pow" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/wl_tile" android:gravity="center">
+            <ImageView android:id="@+id/wl_pow_i" android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/wl_power" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/wl_down" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/wl_tile" android:gravity="center">
+            <ImageView android:id="@+id/wl_down_i" android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/wl_minus" />
+        </LinearLayout>
+        <TextView android:id="@+id/wl_pct" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1.2" android:gravity="center" android:textColor="@color/w_fg" android:textSize="18sp" android:textStyle="bold" />
+        <LinearLayout android:id="@+id/wl_up" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/wl_tile" android:gravity="center">
+            <ImageView android:id="@+id/wl_up_i" android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/wl_plus" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
