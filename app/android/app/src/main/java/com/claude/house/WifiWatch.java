@@ -7,9 +7,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.util.Base64;
 import android.util.Log;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -17,12 +15,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -41,7 +33,6 @@ final class WifiWatch {
     static final String ACTION = "com.claude.house.WIFI_CHECK";
     private static final String TAG = "WifiWatch";
     private static final String CHANNEL = "wifi";
-    private static final String UA = "asusrouter-Android-DUTUtil-1.0.0.245";
 
     private WifiWatch() {}
 
@@ -70,7 +61,7 @@ final class WifiWatch {
     private static boolean wanted(Context ctx) {
         JSONObject s = settings(ctx);
         JSONArray people = s.optJSONArray("people");
-        return s.optBoolean("alerts") || s.optBoolean("history") || (people != null && people.length() > 0);
+        return s.optBoolean("alerts") || s.optBoolean("history") || s.optBoolean("flashNew") || (people != null && people.length() > 0);
     }
 
     private static PendingIntent intent(Context ctx) {
@@ -112,25 +103,7 @@ final class WifiWatch {
     }
 
     private static List<JSONObject> routerClients(Context ctx, JSONObject c) throws Exception {
-        String addr = c.optString("routerAddr");
-        if (addr.isEmpty()) {
-            String subnet = Lifx.subnet(ctx);
-            addr = subnet.isEmpty() ? "192.168.50.1" : subnet + ".1";
-        }
-        String base = addr.startsWith("http") ? addr : "http://" + addr;
-        OkHttpClient http = LanNet.client().newBuilder().readTimeout(10, TimeUnit.SECONDS).build();
-        String auth = Base64.encodeToString((c.optString("routerUser", "admin") + ":" + c.optString("routerPass")).getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-        String token;
-        try (Response r = http.newCall(new Request.Builder().url(base + "/login.cgi").header("User-Agent", UA)
-            .post(RequestBody.create("login_authorization=" + auth, MediaType.get("application/x-www-form-urlencoded"))).build()).execute()) {
-            token = new JSONObject(r.body().string()).optString("asus_token");
-        }
-        if (token.isEmpty()) throw new Exception("Router sign-in failed");
-        JSONObject list;
-        try (Response r = http.newCall(new Request.Builder().url(base + "/appGet.cgi?hook=get_clientlist()")
-            .header("User-Agent", UA).header("Cookie", "asus_token=" + token).header("Referer", base + "/index.asp").build()).execute()) {
-            list = new JSONObject(r.body().string()).optJSONObject("get_clientlist");
-        }
+        JSONObject list = Asus.hook(ctx, "get_clientlist()").optJSONObject("get_clientlist");
         List<JSONObject> out = new ArrayList<>();
         if (list == null) return out;
         for (Iterator<String> it = list.keys(); it.hasNext(); ) {
@@ -157,6 +130,7 @@ final class WifiWatch {
         newDevices(ctx, s, now);
         if (s.optBoolean("history")) WifiLog.devices(ctx, now);
         presence(ctx, s, now);
+        Widgets.redrawWifi(ctx);
     }
 
     // A scan can miss a sleepy device, so: learn quietly for the first hour (4 checks), and only
@@ -169,6 +143,7 @@ final class WifiWatch {
         int learned = prefs(ctx).getInt("learnChecks", 0);
         boolean learning = learned < LEARN_CHECKS;
         List<String> fresh = new ArrayList<>();
+        String freshKey = null, freshName = null;
         Set<String> nextPending = new HashSet<>();
         for (Map.Entry<String, JSONObject> e : now.entrySet()) {
             String key = e.getKey();
@@ -180,12 +155,18 @@ final class WifiWatch {
             String name = d.optString("name");
             if (name.isEmpty()) name = d.optString("vendor");
             fresh.add((name.isEmpty() ? "Unknown device" : name) + (d.optString("ip").isEmpty() ? "" : " (" + d.optString("ip") + ")"));
+            freshKey = key;
+            freshName = name.isEmpty() ? "Unknown device" : name;
         }
         prefs(ctx).edit().putStringSet("knownDevices", known).putStringSet("pendingDevices", nextPending)
             .putInt("learnChecks", Math.min(LEARN_CHECKS, learned + 1)).apply();
         if (s.optBoolean("alerts") && !fresh.isEmpty()) {
-            notify(ctx, 20, fresh.size() == 1 ? "New device on your Wi-Fi" : fresh.size() + " new devices on your Wi-Fi", String.join(", ", fresh));
+            // One new device, known by its MAC through the router: offer to block it right from the alert.
+            boolean canBlock = fresh.size() == 1 && freshKey.matches("(?i)[0-9a-f]{2}(:[0-9a-f]{2}){5}") && Asus.signedIn(ctx);
+            notify(ctx, 20, fresh.size() == 1 ? "New device on your Wi-Fi" : fresh.size() + " new devices on your Wi-Fi", String.join(", ", fresh),
+                canBlock ? freshKey : null, freshName);
         }
+        if (!fresh.isEmpty() && s.optBoolean("flashNew")) WifiFlash.flash(ctx);
     }
 
     private static void presence(Context ctx, JSONObject s, Map<String, JSONObject> now) {
@@ -273,20 +254,40 @@ final class WifiWatch {
         return SceneTimers.runScene(ctx, scene, 0);
     }
 
+    /** The Block button on a new device alert. Blocking. */
+    static void blockFromAlert(Context ctx, String mac, String name) {
+        try {
+            JSONObject names = new JSONObject().put(mac.toUpperCase(java.util.Locale.ROOT), name == null ? "Blocked device" : name);
+            RouterControl.block(ctx, java.util.Collections.singletonList(mac), names, true);
+            notify(ctx, 20, "Blocked " + (name == null ? "the device" : name), "It can't use the internet now. Unblock it in House → Wi-Fi.");
+        } catch (Exception e) {
+            notify(ctx, 20, "Couldn't block it", e.getMessage() == null ? "The router didn't answer" : e.getMessage());
+        }
+    }
+
     private static void notify(Context ctx, int id, String title, String text) {
+        notify(ctx, id, title, text, null, null);
+    }
+
+    private static void notify(Context ctx, int id, String title, String text, String blockMac, String blockName) {
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Wi-Fi alerts", NotificationManager.IMPORTANCE_DEFAULT));
         }
         Intent open = new Intent(ctx, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        android.app.Notification n = new android.app.Notification.Builder(ctx, CHANNEL)
+        android.app.Notification.Builder nb = new android.app.Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_wifi)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(new android.app.Notification.BigTextStyle().bigText(text))
             .setAutoCancel(true)
-            .setContentIntent(PendingIntent.getActivity(ctx, 21, open, PendingIntent.FLAG_IMMUTABLE))
-            .build();
+            .setContentIntent(PendingIntent.getActivity(ctx, 21, open, PendingIntent.FLAG_IMMUTABLE));
+        if (blockMac != null) {
+            Intent block = new Intent(ctx, ActionReceiver.class).setAction(RouterControl.ACTION_BLOCK).putExtra("mac", blockMac).putExtra("name", blockName);
+            PendingIntent pi = PendingIntent.getBroadcast(ctx, 24, block, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            nb.addAction(new android.app.Notification.Action.Builder(null, "Block", pi).build());
+        }
+        android.app.Notification n = nb.build();
         try {
             nm.notify(id, n);
         } catch (SecurityException ignored) {} // notifications turned off for the app

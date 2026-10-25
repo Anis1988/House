@@ -95,6 +95,25 @@ const svg = (name, extra = "") => `<svg viewBox="0 0 24 24" ${extra}>${ICON[name
 
 /* Native plugins. In a desktop browser (no app around the page), small stand-ins so the page still renders. */
 const NATIVE = !!window.Capacitor?.isNativePlatform?.();
+// Browser stand-in for the router controls (RouterControl), so the Wi-Fi Control tab renders.
+const mockRouter = (() => {
+  const m = { filters: { "aa:bb:cc:00:00:01": { paused: true, bedtime: null }, "aa:bb:cc:00:00:02": { paused: false, bedtime: { on: true, days: 31, start: "2100", end: "0700" } } },
+    status: { timers: [{ id: "focus:x", kind: "unblock", at: Date.now() + 23 * 60e3, macs: ["AA:BB:CC:00:00:03"], label: "Kids" }], pausedAll: null, prio: {} },
+    guest: { on: true, ssid: "Home Guest", pass: "welcome123", open: false, left: 5400 } };
+  return async (a) => {
+    await sleep(300);
+    switch (a.op) {
+      case "filters": case "block": case "bedtime": return m.filters;
+      case "status": case "focus": case "pauseAll": case "resumeAll": case "endTimer": case "priority": return m.status;
+      case "guest": return a.on === undefined ? m.guest : (m.guest = { ...m.guest, on: a.on });
+      case "health": return { model: "RT-AX88U", firmware: "3.0.0.4.388_24231", update: "", cpu: 7, mem: 41, cpuTemp: 62, uptime: 9 * 86400 + 4 * 3600 };
+      case "rebootSchedule": return { on: !!a.on, days: a.days || "1000000", time: a.time || "0300" };
+      case "usage": return { enabled: true, devices: [{ mac: "aa:bb:cc:00:00:01", down: 8.2e9, up: 4e8 }, { mac: "aa:bb:cc:00:00:02", down: 2.1e9, up: 1.2e8 }, { mac: "aa:bb:cc:00:00:03", down: 4.5e8, up: 3e7 }] };
+      case "live": return { at: Date.now(), devices: [{ mac: "aa:bb:cc:00:00:01", down: Date.now() * 2, up: Date.now() / 5 }] };
+      default: return {};
+    }
+  };
+})();
 const plugin = (name, fallback) => (NATIVE ? window.capacitorExports.registerPlugin(name) : fallback);
 const Net = plugin("Net", {
   addListener: () => {}, open: async () => { throw new Error("Only in the app"); }, send: async () => {}, close: async () => {},
@@ -114,6 +133,8 @@ const Net = plugin("Net", {
   checkPresence: async () => ({ settings: store.json("mock.watch", {}), presence: {}, notifications: true }),
   addThisPhone: async ({ name }) => { const s = store.json("mock.watch", {}); s.people = [...(s.people || []).filter((p) => p.key !== "this-phone"), { key: "this-phone", name }]; store.setJson("mock.watch", s); return { settings: s, presence: { "this-phone": { home: true, since: Date.now() } }, notifications: true }; },
   speedTest: async () => (await sleep(1500), { down: 512.3, up: 41.7, ping: 12 }),
+  flashTest: async () => {},
+  router: async (a) => mockRouter(a),
   qr: async () => ({ dataUrl: "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#fff"/><rect x="1" y="1" width="3" height="3"/><rect x="6" y="1" width="3" height="3"/><rect x="1" y="6" width="3" height="3"/><rect x="5" y="5" width="2" height="2"/></svg>') }),
 });
 

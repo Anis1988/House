@@ -65,73 +65,21 @@
     routerTok = { base, token: j.asus_token };
     return routerTok;
   }
-  /* Pause a device: the ASUS router's parental controls ("block all internet" for a MAC).
-     Lists are kept by the router as ">"-separated values in a few settings. */
-  const MF = ["MULTIFILTER_ALL", "MULTIFILTER_ENABLE", "MULTIFILTER_MAC", "MULTIFILTER_DEVICENAME", "MULTIFILTER_MACFILTER_DAYTIME_V2"];
+  // Paused devices come from the router's parental controls (native RouterControl).
   let paused = new Set(); // MACs the router is blocking right now
-  async function routerFilters() {
-    if (!routerTok) await routerLogin();
-    const hook = MF.map((k) => `nvram_get(${k})`).join(";");
-    const res = await fetch(`${routerTok.base}/appGet.cgi?hook=${encodeURIComponent(hook)}`, {
-      headers: { "User-Agent": UA, Cookie: `asus_token=${routerTok.token}`, Referer: `${routerTok.base}/index.asp` },
-    });
-    const j = await res.json();
-    const split = (k) => (j[k] ? String(j[k]).split(">") : []);
-    const macs = split("MULTIFILTER_MAC");
-    return { macs, names: split("MULTIFILTER_DEVICENAME"), enable: split("MULTIFILTER_ENABLE"), times: split("MULTIFILTER_MACFILTER_DAYTIME_V2") };
-  }
+  const pausedFrom = (f) => { paused = new Set(Object.entries(f || {}).filter(([, v]) => v.paused).map(([m]) => m)); };
   async function loadPaused() {
     if (!router().pass) { paused = new Set(); return; }
-    try {
-      const f = await routerFilters();
-      paused = new Set(f.macs.filter((m, i) => f.enable[i] === "2").map((m) => m.toLowerCase()));
-    } catch { /* older firmware: leave as is */ }
+    try { pausedFrom(await Net.router({ op: "filters" })); } catch { /* not home, or older firmware: leave as is */ }
   }
   async function setPaused(d, pause) {
-    const f = await routerFilters();
-    const i = f.macs.findIndex((m) => m.toLowerCase() === d.mac.toLowerCase());
-    if (i >= 0) f.enable[i] = pause ? "2" : "0";
-    else if (pause) {
-      f.macs.push(d.mac.toUpperCase());
-      f.names.push((d.label || "Device").replace(/[<>]/g, ""));
-      f.enable.push("2");
-      f.times.push("W03E21000700<W04122000800");
-    }
-    while (f.names.length < f.macs.length) f.names.push("Device");
-    while (f.times.length < f.macs.length) f.times.push("W03E21000700<W04122000800");
-    while (f.enable.length < f.macs.length) f.enable.push("0");
-    const body = new URLSearchParams({
-      action_mode: "apply", rc_service: "restart_firewall",
-      MULTIFILTER_ALL: "1",
-      MULTIFILTER_ENABLE: f.enable.join(">"),
-      MULTIFILTER_MAC: f.macs.join(">"),
-      MULTIFILTER_DEVICENAME: f.names.join(">"),
-      MULTIFILTER_MACFILTER_DAYTIME_V2: f.times.join(">"),
-    }).toString();
-    const res = await fetch(`${routerTok.base}/applyapp.cgi`, {
-      method: "POST",
-      headers: { "User-Agent": UA, Cookie: `asus_token=${routerTok.token}`, Referer: `${routerTok.base}/index.asp`, "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-    });
-    if (!res.ok) throw new Error(`The router said no (${res.status})`);
-    // Read it back so the button shows what the router really did.
-    await new Promise((r) => setTimeout(r, 2500));
-    await loadPaused();
+    pausedFrom(await Net.router({ op: "block", macs: [d.mac], names: { [d.mac.toUpperCase()]: d.label || "Device" }, on: pause }));
     if (paused.has(d.mac.toLowerCase()) !== pause) throw new Error("The router didn't take the change. Your router's firmware may not support this.");
   }
 
   async function routerClients() {
-    if (!routerTok) await routerLogin();
-    if (!routerTok) return null;
-    const get = async () => {
-      const res = await fetch(`${routerTok.base}/appGet.cgi?hook=${encodeURIComponent("get_clientlist()")}`, {
-        headers: { "User-Agent": UA, Cookie: `asus_token=${routerTok.token}`, Referer: `${routerTok.base}/index.asp` },
-      });
-      return res.json();
-    };
-    let j = await get().catch(() => null);
-    if (!j?.get_clientlist) { await routerLogin(); j = await get(); }
-    const list = j.get_clientlist || {};
+    // Through the native router session (shared with the Control tab), so the router sees one sign-in.
+    const list = (await Net.router({ op: "clients" })).get_clientlist || {};
     return (list.maclist || Object.keys(list).filter((k) => /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/i.test(k))).map((mac) => {
       const c = list[mac] || {};
       return { mac, ip: c.ip, name: c.nickName || c.name, maker: c.vendor, online: c.isOnline === "1", band: { 0: "Wired", 1: "2.4 GHz", 2: "5 GHz", 3: "5 GHz-2", 4: "6 GHz" }[c.isWL] || "", rssi: c.rssi && c.rssi !== "0" ? +c.rssi : null };
@@ -218,6 +166,7 @@
     paintHome();
     paintWatch();
     paintHistory();
+    House.wifiControl.repaint();
   }
 
   /* ---- History: internet outages and devices coming and going ---- */
@@ -306,6 +255,10 @@
     $("wfArrive").innerHTML = opts(s.arrive || "");
     $("wfNoCloud").hidden = !s.leave || !!store.get("lifx.token");
     $("wfLeave").innerHTML = opts(s.leave || "");
+    const bulbs = House.byId("lights")?.list?.() || [];
+    $("wfFlashLight").innerHTML = `<option value="">Pick a light</option>` + bulbs.map((l) => `<option value="${esc(l.id)}" ${s.flashLight === l.id ? "selected" : ""}>${esc(l.label)}${l.group ? ` (${esc(l.group)})` : ""}</option>`).join("");
+    $("wfFlashOut").classList.toggle("on", !!s.flashOutage);
+    $("wfFlashNew").classList.toggle("on", !!s.flashNew);
   }
 
   /* ---- Speed test ---- */
@@ -413,6 +366,7 @@
         <div class="card glass" id="wfHome" hidden></div>
         <input class="field search" id="wfSearch" placeholder="Search by name, address or maker" aria-label="Search devices">
         <div id="wfList"></div>` },
+      { id: "control", label: "Control", icon: '<path d="M12 2l8 3v6c0 5-3.5 9.3-8 11-4.5-1.7-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/>', html: House.wifiControl.controlHtml },
       { id: "history", label: "History", icon: "clock", html: `
         <div class="label">Internet</div>
         <div class="card glass" id="wfNet"></div>
@@ -434,7 +388,7 @@
           <label class="fld">Security<select class="field" id="wfGuestSec"><option value="WPA">WPA / WPA2 / WPA3</option><option value="WEP">WEP</option><option value="none">No password</option></select></label>
           <div class="list"><button class="ghost center" id="wfGuestSave">Make the code</button></div>
           <p class="note">Kept on this phone only. Use your guest network's name and password if you have one.</p>
-        </div>` },
+        </div>` + House.wifiControl.toolsHtml },
       { id: "settings", label: "Settings", icon: "gear" },
     ],
     settingsHtml: `
@@ -462,6 +416,14 @@
         <p class="note err" id="wfNoCloud" hidden>Once your phone is off the home Wi-Fi it can't reach the bulbs. Add a LIFX cloud token in <b>Lights → Settings</b>, or the lights won't change when you leave.</p>
         <p class="note">Checked about every 15 min, so it can take a little while. Someone counts as gone after their phone is missing twice in a row. Phones with “private Wi-Fi address” turned off for this network are recognised more reliably. Lights can only be reached from the home Wi-Fi: for a leave scene, add a LIFX cloud token in Lights → Settings.</p>
       </div>
+      <div class="label">Lights react</div>
+      <div class="card glass">
+        <label class="fld" style="margin-top:0">Light that blinks<select class="field" id="wfFlashLight"></select></label>
+        <div class="set-row"><div class="set-text"><b>When the internet goes down</b><span>Checked about every 5 min while you're home.</span></div><button class="tgl" id="wfFlashOut" aria-label="Blink when the internet goes down"><i></i></button></div>
+        <div class="set-row"><div class="set-text"><b>When a new device joins</b><span>Checked about every 15 min.</span></div><button class="tgl" id="wfFlashNew" aria-label="Blink when a new device joins"><i></i></button></div>
+        <div class="list"><button class="ghost center" id="wfFlashTest">Test it</button></div>
+        <p class="note">The light blinks three times, then goes back to how it was.</p>
+      </div>
       <div class="label">Router (ASUS)</div>
       <div class="card glass">
         <p class="note" style="margin-top:0">Optional. With your router's sign-in, the list shows every device with its real name, maker, Wi-Fi band and signal. Without it, the app finds devices itself.</p>
@@ -486,7 +448,13 @@
       ["bell", "New device alert", "Settings → New device alert sends a notification when something joins your Wi-Fi for the first time."],
       ["phone", "Who's home", "Tap someone's phone → “This is a person's phone”. The Devices tab then shows who's home, and Settings can run a scene when someone arrives or everyone leaves."],
       ["refresh", "Speed test", "Tools → Run speed test measures your internet's download, upload and ping, and keeps the last results."],
-      ["key", "Guest Wi-Fi", "Tools → type your Wi-Fi name and password once; guests point their camera at the code to join."],
+      ["key", "Guest Wi-Fi", "Tools → type your Wi-Fi name and password once; guests point their camera at the code to join. With the router signed in, Control → Guest Wi-Fi turns the guest network on for 1 h, 2 h, a day or always."],
+      ["phone", "Profiles", "Control → New profile: put a person's devices together. Pause, Focus time, bedtime and priority then work on all of them at once."],
+      ["clock", "Focus time and pause everyone", "Control → Focus time pauses someone's internet for 30 min to 2 h and brings it back by itself. Pause everyone pauses every device except the ones you keep on."],
+      ["moon", "Internet bedtime", "Control → Add a bedtime: internet off at night on the days you pick. The router keeps it, so it works with your phone away."],
+      ["star", "Priority, password, block", "Control → Device priority gives a device bandwidth first for a while (router QoS on). Change the Wi-Fi password there too. A new device alert has a Block button."],
+      ["router", "Router health and data use", "Tools → Router shows CPU, memory, temperature and updates, and restarts it now or weekly. Data use shows who used the most today or this week, or live."],
+      ["bulb", "Lights react", "Settings → Lights react: a light blinks when the internet goes down or a new device joins."],
     ],
     mount() {
       $("wfRefresh").onclick = () => { buzz(6); load(true); };
@@ -528,6 +496,12 @@
       $("wfArrive").onchange = (e) => { watch.settings.arrive = e.target.value; saveWatch("Saved"); };
       $("wfLeave").onchange = (e) => { watch.settings.leave = e.target.value; saveWatch("Saved"); };
       $("wfSpeedGo").onclick = () => { buzz(); speedTest(); };
+      const needLight = () => { if (watch.settings.flashLight) return false; toast("Pick the light first", true); return true; };
+      $("wfFlashLight").onchange = (e) => { watch.settings.flashLight = e.target.value; saveWatch("Saved"); };
+      $("wfFlashOut").onclick = () => { buzz(); if (needLight()) return; watch.settings.flashOutage = !watch.settings.flashOutage; saveWatch(watch.settings.flashOutage ? "Blinks when the internet goes down" : "Off"); };
+      $("wfFlashNew").onclick = () => { buzz(); if (needLight()) return; watch.settings.flashNew = !watch.settings.flashNew; saveWatch(watch.settings.flashNew ? "Blinks when a new device joins" : "Off"); };
+      $("wfFlashTest").onclick = () => { buzz(); if (needLight()) return; Net.flashTest().then(() => toast("Blinked")).catch(() => toast("Couldn't reach the light", true)); };
+      House.wifiControl.mount();
       $("wfGuestSave").onclick = () => {
         const g = { ssid: $("wfGuestSsid").value.trim(), pass: $("wfGuestPass").value, sec: $("wfGuestSec").value };
         if (!g.ssid) { toast("Type the Wi-Fi name", true); return; }
@@ -543,7 +517,10 @@
       paintSpeed();
       paintGuest();
     },
+    list: () => devices,
     onShow(tab) {
+      House.wifiControl.onShow(tab);
+      if (tab === "tools") paintGuest();
       if (tab === "devices" && !busy && !devices.length) load(); else paint();
       if (tab === "history") loadLog();
       if (tab === "devices" && router().pass) loadPaused().then(paint);

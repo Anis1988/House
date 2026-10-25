@@ -219,5 +219,6 @@ final class Presence {
             all.put(KEY, new JSONObject().put("home", home).put("misses", 0).put("since", System.currentTimeMillis()));
         } catch (JSONException ignored) {}
         prefs(ctx).edit().putString("presence", all.toString()).apply();
+        Widgets.redrawWifi(ctx);
     }
 }

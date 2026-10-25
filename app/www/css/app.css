@@ -460,3 +460,23 @@ nav button.on svg { color: var(--at); }
 .sc-left svg { width: 14px; height: 14px; }
 .sc-left button { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--glass); border: 1px solid var(--edge); color: var(--text); }
 .sc-left button svg { width: 12px; height: 12px; }
+
+/* Wi-Fi controls */
+.chips > button { padding: 9px 13px; border-radius: 14px; background: var(--glass); border: 1px solid var(--edge-hi); font-weight: 700; font-size: 13px; color: var(--muted); }
+.chips > button.on { color: #fff; background: var(--grad); border-color: transparent; }
+.set-row.as-btn { width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-bottom: 0; color: inherit; }
+.set-row.as-btn:first-child { border-top: 0; }
+.ic-sm { width: 34px; height: 34px; flex: none; border-radius: 11px; display: grid; place-items: center; background: var(--glass); border: 1px solid var(--edge); color: var(--at); }
+.ic-sm svg { width: 17px; height: 17px; }
+.chev { color: var(--muted); display: grid; }
+.chev svg { width: 18px; height: 18px; }
+.use-row + .use-row { margin-top: 10px; }
+.use-row .row b { font-size: 14px; }
+.use-bar { height: 6px; border-radius: 4px; background: var(--glass); margin-top: 6px; overflow: hidden; }
+.use-bar i { display: block; height: 100%; border-radius: 4px; background: var(--grad); }
+.sig { display: inline-flex; align-items: flex-end; gap: 2px; height: 16px; flex: none; }
+.sig i { width: 4px; border-radius: 1px; background: var(--edge-hi); }
+.sig i:nth-child(1) { height: 25%; } .sig i:nth-child(2) { height: 50%; } .sig i:nth-child(3) { height: 75%; } .sig i:nth-child(4) { height: 100%; }
+.sig1 i:nth-child(-n+1), .sig2 i:nth-child(-n+2), .sig3 i:nth-child(-n+3), .sig4 i:nth-child(-n+4) { background: var(--good); }
+.sig1 i:nth-child(1) { background: var(--bad); }
+.sig2 i:nth-child(-n+2) { background: #f59e0b; }

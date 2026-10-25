@@ -11,4 +11,5 @@
     <string name="wl_desc_rooms">Each room on or off</string>
     <string name="wl_desc_bright">All lights brighter or darker</string>
     <string name="wl_desc_away">Vacation mode and Bedtime</string>
+    <string name="wl_desc_wifi">Internet up or down, last speed test and who is home</string>
 </resources>

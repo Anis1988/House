@@ -122,6 +122,12 @@ final class Widgets {
         LightsWidget.redrawOnly(ctx);
     }
 
+    /** Redraws the Wi-Fi widget (after a speed test, internet check or who's-home change). */
+    static void redrawWifi(Context ctx) {
+        AppWidgetManager mgr = AppWidgetManager.getInstance(ctx);
+        for (int id : mgr.getAppWidgetIds(new ComponentName(ctx, WifiWidget.class))) draw(ctx, mgr, WifiWidget.class, id);
+    }
+
     static void draw(Context ctx, AppWidgetManager mgr, Class<?> cls, int id) {
         Bundle o = mgr.getAppWidgetOptions(id);
         int w = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250), h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 110);
@@ -131,6 +137,7 @@ final class Widgets {
         else if (cls == ScenesWidget.class) v = scenes(ctx, w, h);
         else if (cls == RoomsWidget.class) v = rooms(ctx, h);
         else if (cls == BrightWidget.class) v = bright(ctx);
+        else if (cls == WifiWidget.class) v = wifi(ctx, h);
         else v = away(ctx);
         mgr.updateAppWidget(id, v);
     }
@@ -147,8 +154,79 @@ final class Widgets {
             case "rooms": return rooms(ctx, h);
             case "bright": return bright(ctx);
             case "away": return away(ctx);
+            case "wifi": return wifi(ctx, h);
             default: return toggle(ctx);
         }
+    }
+
+    private static final int[] WP = {R.id.ww_p0, R.id.ww_p1, R.id.ww_p2, R.id.ww_p3};
+    private static final int[] WD = {R.id.ww_pd0, R.id.ww_pd1, R.id.ww_pd2, R.id.ww_pd3};
+    private static final int[] WN = {R.id.ww_pn0, R.id.ww_pn1, R.id.ww_pn2, R.id.ww_pn3};
+    private static final int[] WS = {R.id.ww_ps0, R.id.ww_ps1, R.id.ww_ps2, R.id.ww_ps3};
+
+    private static String ago(long at) {
+        long m = (System.currentTimeMillis() - at) / 60000;
+        return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? (m / 60) + " h ago" : (m / 1440) + " d ago";
+    }
+
+    private static String shortAgo(long at) {
+        long m = (System.currentTimeMillis() - at) / 60000;
+        return m < 1 ? "now" : m < 60 ? m + "m" : m < 1440 ? (m / 60) + "h" : (m / 1440) + "d";
+    }
+
+    /** Wi-Fi: internet, last speed test, how many are home; the people below when it's tall enough. */
+    private static RemoteViews wifi(Context ctx, int h) {
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_wifi);
+        android.content.SharedPreferences p = ctx.getSharedPreferences(Lifx.PREFS, Context.MODE_PRIVATE);
+        // Internet: what the last outage check found (only kept while the outage log is on).
+        if (!WifiLog.outageWatchOn(ctx) || !p.contains("netUp")) {
+            v.setTextViewText(R.id.ww_b0, "—");
+            v.setTextViewText(R.id.ww_s0, "Internet");
+        } else {
+            boolean up = p.getBoolean("netUp", true);
+            v.setTextViewText(R.id.ww_b0, up ? "Up" : "Down");
+            v.setTextViewText(R.id.ww_s0, "Internet");
+            v.setTextColor(R.id.ww_b0, up ? 0xFF10B981 : 0xFFF43F5E);
+        }
+        // Last speed test.
+        try {
+            JSONObject s = new JSONObject(p.getString("lastSpeed", "{}"));
+            v.setTextViewText(R.id.ww_b1, s.has("down") ? Math.round(s.optDouble("down")) + " ↓" : "—");
+            v.setTextViewText(R.id.ww_s1, s.has("down") ? "Mbps · " + shortAgo(s.optLong("at")) : "Speed");
+        } catch (Exception e) {
+            v.setTextViewText(R.id.ww_b1, "—");
+        }
+        // Who's home.
+        JSONArray people = WifiWatch.settings(ctx).optJSONArray("people");
+        JSONObject state = WifiWatch.presence(ctx);
+        int n = people == null ? 0 : people.length(), home = 0;
+        long now = System.currentTimeMillis();
+        boolean tall = h >= 150;
+        for (int i = 0; i < 4; i++) {
+            if (i >= n || !tall) { v.setViewVisibility(WP[i], View.GONE); continue; }
+        }
+        for (int i = 0; i < n; i++) {
+            JSONObject person = people.optJSONObject(i);
+            String key = person.optString("key").toLowerCase(java.util.Locale.ROOT);
+            JSONObject st = state.optJSONObject(key);
+            boolean in = st != null && st.optBoolean("home")
+                && (Presence.KEY.equals(key) || now - st.optLong("seenAt", st.optLong("since")) < 30 * 60_000L);
+            if (in) home++;
+            if (i < 4 && tall) {
+                v.setViewVisibility(WP[i], View.VISIBLE);
+                v.setImageViewResource(WD[i], in ? R.drawable.wl_dot_on : R.drawable.wl_dot_off);
+                v.setTextViewText(WN[i], person.optString("name"));
+                v.setTextViewText(WS[i], in ? "Home" : "Away");
+            }
+        }
+        v.setTextViewText(R.id.ww_b2, n == 0 ? "—" : home + "/" + n);
+        v.setTextViewText(R.id.ww_s2, n == 0 ? "Who's home" : "home");
+        v.setViewVisibility(R.id.ww_people, tall && n > 0 ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.ww_head, h >= 100 ? View.VISIBLE : View.GONE);
+        long checked = p.getLong("netCheckedAt", 0);
+        v.setTextViewText(R.id.ww_when, checked > 0 && WifiLog.outageWatchOn(ctx) ? "checked " + ago(checked) : "");
+        v.setOnClickPendingIntent(R.id.ww_root, open(ctx));
+        return v;
     }
 
     private static int color(Context ctx, int res) {

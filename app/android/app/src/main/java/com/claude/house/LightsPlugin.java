@@ -28,6 +28,7 @@ public class LightsPlugin extends Plugin {
         Bedtime.schedule(getContext());
         SceneTimers.schedule(getContext());
         SceneOffs.schedule(getContext());
+        RouterControl.schedule(getContext());
         Presence.register(getContext());
         NestWatch.schedule(getContext());
         WifiLog.schedule(getContext());

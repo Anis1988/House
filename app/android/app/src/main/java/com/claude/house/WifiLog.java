@@ -106,7 +106,8 @@ final class WifiLog {
     // ---- Internet outages ----
 
     static boolean outageWatchOn(Context ctx) {
-        return WifiWatch.settings(ctx).optBoolean("outages");
+        JSONObject s = WifiWatch.settings(ctx);
+        return s.optBoolean("outages") || s.optBoolean("flashOutage");
     }
 
     private static PendingIntent outageIntent(Context ctx) {
@@ -149,15 +150,18 @@ final class WifiLog {
                 if (open != null) open.put("end", prefs(ctx).getLong("netCheckedAt", t)).put("unsure", true);
             } else if (internetUp()) {
                 if (open != null) open.put("end", t);
-            } else if (open == null) {
+                prefs(ctx).edit().putBoolean("netUp", true).apply();
+            } else if (prefs(ctx).edit().putBoolean("netUp", false).commit() && open == null) {
                 // It went down some time since the last good check: count from halfway.
                 long last = prefs(ctx).getLong("netCheckedAt", t);
                 list.put(new JSONObject().put("start", t - Math.min(t - last, OUTAGE_EVERY) / 2).put("end", JSONObject.NULL));
+                if (WifiWatch.settings(ctx).optBoolean("flashOutage")) WifiFlash.flash(ctx);
             }
             prefs(ctx).edit().putString("outages", trim(list).toString()).putLong("netCheckedAt", t).apply();
         } catch (JSONException ignored) {
         } finally {
             schedule(ctx);
+            Widgets.redrawWifi(ctx);
         }
     }
 }

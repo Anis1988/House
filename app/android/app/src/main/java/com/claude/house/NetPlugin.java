@@ -648,10 +648,38 @@ public class NetPlugin extends Plugin {
                 out.put("down", Math.round(down * 10) / 10.0);
                 out.put("up", Math.round(up * 10) / 10.0);
                 out.put("ping", Math.round(best / 1e6));
+                out.put("at", System.currentTimeMillis());
+                // Kept for the Wi-Fi widget.
+                getContext().getSharedPreferences(Lifx.PREFS, android.content.Context.MODE_PRIVATE).edit().putString("lastSpeed", out.toString()).apply();
+                Widgets.redrawWifi(getContext());
                 call.resolve(out);
             } catch (Exception e) {
                 call.reject("The speed test couldn't reach the internet");
             }
+        });
+    }
+
+    // ---- ASUS router controls ----
+
+    /** { op, ... } → see RouterControl.op. */
+    @PluginMethod
+    public void router(PluginCall call) {
+        JSObject a = call.getData();
+        pool.execute(() -> {
+            try {
+                call.resolve(new JSObject(RouterControl.op(getContext(), a).toString()));
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "The router didn't answer" : e.getMessage());
+            }
+        });
+    }
+
+    /** Blinks the "Lights react" light once, to try it. */
+    @PluginMethod
+    public void flashTest(PluginCall call) {
+        pool.execute(() -> {
+            WifiFlash.flash(getContext());
+            call.resolve();
         });
     }
 

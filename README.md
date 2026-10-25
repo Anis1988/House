@@ -14,7 +14,7 @@ Every push to `main` builds and publishes the next version, and the app shows an
 | 🖥️ Samsung screen (Odyssey G7) | Home Wi-Fi; Allow once on the screen | Remote · Settings |
 | 🌡️ Nest thermostat + doorbell | Google Device Access (your own project, $5 once) | Thermostat · Doorbell · Settings |
 | 📷 Wyze cameras | Wyze cloud; your login + free API key | Cameras · Events · Settings |
-| 📶 Wi-Fi | Finds devices itself; optional ASUS router sign-in for the full list | Devices · Tools · Settings |
+| 📶 Wi-Fi | Finds devices itself; optional ASUS router sign-in for the full list and controls | Devices · Control · History · Tools · Settings |
 
 Any side can be hidden in Settings → Devices in the app. Logins and keys stay on the phone.
 
@@ -25,6 +25,7 @@ Any side can be hidden in Settings → Devices in the app. Logins and keys stay 
 - **Nest:** thermostat dial (set temperature, Heat/Cool/Heat·Cool/Off, Eco, humidity), °C/°F. Doorbell live view (WebRTC, video and sound); ring, person and motion alerts via your Pub/Sub subscription (checked every ~2 min); temperature and humidity history (day/week chart); humidity alert. Big I'm away / I'm home button (Eco).
 - **Wyze:** latest snapshot per camera (tap for full screen and Refresh), Live view (beta, the Wyze Web Portal stream), online state, on/off; Events tab with video clips when Wyze kept one; with the last two days of motion/sound/person alerts and their snapshots. Google-login accounts need a Wyze password first (Forgot password in the Wyze app).
 - **Wi-Fi:** every device on the network, grouped and named where possible (LIFX, TV, screen, cameras, Apple, Cast, Tuya…); tap one to give it your own name. New device alert (notification, checked every ~15 min), Who's home (mark phones as people; this phone updates right away, others every ~15 min; run a scene when someone arrives or everyone leaves; with a LIFX cloud token the lights also work when you're away), speed test with history, guest Wi-Fi QR code. History tab: devices coming and going, internet outage log (checked every ~5 min at home). Pause a device's internet through the ASUS router (router sign-in; beta).
+- **Wi-Fi controls (ASUS router sign-in; beta):** Control tab with what's paused right now, profiles (a person's devices together), Focus time (pause for 30 min–2 h, back by itself), pause everyone except the devices you keep, Internet bedtime (kept by the router), device priority for a while (router QoS), guest Wi-Fi on for 1 h/2 h/a day/always (the router ends it), change the Wi-Fi password. Block button on the new device alert. Tools: router health (CPU, memory, temperature, uptime, firmware update check), restart now or weekly, data use per device (today, 7 days, live; the router's Traffic Analyzer), Wi-Fi signal per device with weak ones flagged. Lights react: a light blinks when the internet goes down or a new device joins. Wi-Fi widget: internet up/down, last speed test, who's home.
 
 ## Planned next
 

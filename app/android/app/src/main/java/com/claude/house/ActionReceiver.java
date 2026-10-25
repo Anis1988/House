@@ -77,6 +77,21 @@ public class ActionReceiver extends BroadcastReceiver {
             }).start();
             return;
         }
+        if (RouterControl.ACTION_TIMER.equals(intent.getAction()) || RouterControl.ACTION_BLOCK.equals(intent.getAction())) {
+            boolean timer = RouterControl.ACTION_TIMER.equals(intent.getAction());
+            String mac = intent.getStringExtra("mac"), name = intent.getStringExtra("name");
+            PendingResult result = goAsync();
+            new Thread(() -> {
+                try {
+                    if (timer) RouterControl.fire(app);
+                    else WifiWatch.blockFromAlert(app, mac, name);
+                } catch (Exception ignored) {
+                } finally {
+                    result.finish();
+                }
+            }).start();
+            return;
+        }
         if (SceneOffs.ACTION.equals(intent.getAction())) {
             PendingResult result = goAsync();
             worker.execute(() -> {
