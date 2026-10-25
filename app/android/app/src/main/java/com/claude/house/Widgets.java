@@ -94,6 +94,17 @@ final class Widgets {
                 case "bedtime":
                     Bedtime.set(ctx, !Bedtime.enabled(ctx), Bedtime.minutes(ctx));
                     break;
+                case "nest":
+                    // Warmer / cooler, or refresh. The Nest widget is redrawn by NestWatch.
+                    try {
+                        if ("refresh".equals(arg)) NestWatch.refresh(ctx);
+                        else NestWatch.adjust(ctx, "up".equals(arg) ? 1 : -1);
+                    } catch (Exception e) {
+                        String why = e.getMessage() == null ? "didn't answer" : e.getMessage();
+                        new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                            android.widget.Toast.makeText(ctx, "Nest: " + why, android.widget.Toast.LENGTH_SHORT).show());
+                    }
+                    return;
                 default:
                     break;
             }
@@ -123,9 +134,13 @@ final class Widgets {
     }
 
     /** Redraws the Wi-Fi widget (after a speed test, internet check or who's-home change). */
-    static void redrawWifi(Context ctx) {
+    static void redrawWifi(Context ctx) { redraw(ctx, WifiWidget.class); }
+    static void redrawNest(Context ctx) { redraw(ctx, NestWidget.class); }
+    static void redrawDoorbell(Context ctx) { redraw(ctx, DoorbellWidget.class); }
+
+    private static void redraw(Context ctx, Class<?> cls) {
         AppWidgetManager mgr = AppWidgetManager.getInstance(ctx);
-        for (int id : mgr.getAppWidgetIds(new ComponentName(ctx, WifiWidget.class))) draw(ctx, mgr, WifiWidget.class, id);
+        for (int id : mgr.getAppWidgetIds(new ComponentName(ctx, cls))) draw(ctx, mgr, cls, id);
     }
 
     static void draw(Context ctx, AppWidgetManager mgr, Class<?> cls, int id) {
@@ -138,6 +153,8 @@ final class Widgets {
         else if (cls == RoomsWidget.class) v = rooms(ctx, h);
         else if (cls == BrightWidget.class) v = bright(ctx);
         else if (cls == WifiWidget.class) v = wifi(ctx, h);
+        else if (cls == NestWidget.class) v = nest(ctx, h);
+        else if (cls == DoorbellWidget.class) v = doorbell(ctx, w, h);
         else v = away(ctx);
         mgr.updateAppWidget(id, v);
     }
@@ -155,6 +172,8 @@ final class Widgets {
             case "bright": return bright(ctx);
             case "away": return away(ctx);
             case "wifi": return wifi(ctx, h);
+            case "nest": return nest(ctx, h);
+            case "doorbell": return doorbell(ctx, w, h);
             default: return toggle(ctx);
         }
     }
@@ -167,6 +186,67 @@ final class Widgets {
     private static String ago(long at) {
         long m = (System.currentTimeMillis() - at) / 60000;
         return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? (m / 60) + " h ago" : (m / 1440) + " d ago";
+    }
+
+    /** Nest: inside temperature, target, and warmer / cooler buttons. */
+    private static RemoteViews nest(Context ctx, int h) {
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_nest);
+        JSONObject s = NestWatch.state(ctx);
+        boolean signed = !HouseActions.creds(ctx).optString("nestRefresh").isEmpty();
+        if (!signed || !s.has("temp")) {
+            v.setTextViewText(R.id.wn_temp, "—");
+            v.setTextViewText(R.id.wn_target, signed ? "Tap to load" : "Set up Nest in the app");
+            v.setViewVisibility(R.id.wn_btns, View.GONE);
+            v.setOnClickPendingIntent(R.id.wn_mid, signed ? tap(ctx, "nest", "refresh") : open(ctx));
+            v.setOnClickPendingIntent(R.id.wn_head, open(ctx));
+            return v;
+        }
+        v.setTextViewText(R.id.wn_temp, NestText.temp(s, s.optDouble("temp")));
+        String hvac = s.optString("hvac");
+        String target = NestText.target(s) + ("HEATING".equals(hvac) ? " · heating" : "COOLING".equals(hvac) ? " · cooling" : "");
+        v.setTextViewText(R.id.wn_target, target);
+        v.setTextViewText(R.id.wn_hum, s.has("hum") ? Math.round(s.optDouble("hum")) + "% · " + shortAgo(s.optLong("at")) : shortAgo(s.optLong("at")));
+        v.setTextViewText(R.id.wn_set, NestText.setpoint(s));
+        boolean adjustable = !"MANUAL_ECO".equals(s.optString("eco")) && ("HEAT".equals(s.optString("mode")) || "COOL".equals(s.optString("mode")) || "HEATCOOL".equals(s.optString("mode")));
+        v.setViewVisibility(R.id.wn_btns, adjustable && h >= 100 ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.wn_head, h >= 90 ? View.VISIBLE : View.GONE);
+        v.setOnClickPendingIntent(R.id.wn_up, tap(ctx, "nest", "up"));
+        v.setOnClickPendingIntent(R.id.wn_down, tap(ctx, "nest", "down"));
+        v.setOnClickPendingIntent(R.id.wn_mid, tap(ctx, "nest", "refresh"));
+        v.setOnClickPendingIntent(R.id.wn_head, open(ctx));
+        return v;
+    }
+
+    /** Doorbell: the last ring or person, with its picture when there is one. */
+    private static RemoteViews doorbell(Context ctx, int w, int h) {
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_doorbell);
+        JSONObject r = NestWatch.lastRing(ctx);
+        v.setOnClickPendingIntent(R.id.wd_root, open(ctx));
+        if (!r.has("at")) {
+            v.setTextViewText(R.id.wd_when, "");
+            v.setTextViewText(R.id.wd_msg, HouseActions.creds(ctx).optString("nestSub").isEmpty()
+                ? "Turn on doorbell alerts in the app (Nest → Settings) to see rings here" : "No rings yet");
+            return v;
+        }
+        v.setTextViewText(R.id.wd_title, "person".equals(r.optString("kind")) ? "Person at the door" : "Doorbell rang");
+        v.setTextViewText(R.id.wd_when, ago(r.optLong("at")));
+        java.io.File f = new java.io.File(ctx.getFilesDir(), "doorbell.jpg");
+        android.graphics.Bitmap bmp = null;
+        if (r.optBoolean("image") && f.exists()) {
+            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+            o.inSampleSize = 2; // a widget doesn't need the full picture (and must stay small)
+            bmp = android.graphics.BitmapFactory.decodeFile(f.getPath(), o);
+        }
+        if (bmp != null) {
+            v.setImageViewBitmap(R.id.wd_img, bmp);
+            v.setViewVisibility(R.id.wd_img, View.VISIBLE);
+            v.setTextViewText(R.id.wd_msg, "");
+        } else {
+            v.setViewVisibility(R.id.wd_img, View.GONE);
+            v.setTextViewText(R.id.wd_msg, new java.text.SimpleDateFormat("EEE h:mm a", java.util.Locale.getDefault()).format(new java.util.Date(r.optLong("at")))
+                + "\n" + r.optString("device", "Doorbell") + "\n(this doorbell doesn't send pictures)");
+        }
+        return v;
     }
 
     private static String shortAgo(long at) {

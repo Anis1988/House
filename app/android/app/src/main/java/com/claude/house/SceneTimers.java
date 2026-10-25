@@ -85,6 +85,7 @@ final class SceneTimers {
 
     static void saveScenes(Context ctx, JSONArray scenes) {
         prefs(ctx).edit().putBoolean("scenesSeeded", true).putString("scenes", scenes.toString()).apply();
+        Shortcuts.update(ctx);
     }
 
     static void saveTimers(Context ctx, JSONArray timers) {

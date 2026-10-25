@@ -29,6 +29,8 @@ public class LightsPlugin extends Plugin {
         SceneTimers.schedule(getContext());
         SceneOffs.schedule(getContext());
         RouterControl.schedule(getContext());
+        HomeAuto.schedule(getContext());
+        Shortcuts.update(getContext());
         Presence.register(getContext());
         NestWatch.schedule(getContext());
         WifiLog.schedule(getContext());
@@ -125,6 +127,7 @@ public class LightsPlugin extends Plugin {
             }
             HouseActions.saveCreds(getContext(), c);
             NestWatch.schedule(getContext());
+            HomeAuto.schedule(getContext()); // movie mode needs the TV set up
             WifiWatch.schedule(getContext()); // every 5 or 15 min depends on the router sign-in
         }
         call.resolve();

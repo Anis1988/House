@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nest thermostat: inside temperature, target, warmer / cooler -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/wn_root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_bg" android:orientation="vertical" android:padding="8dp">
+    <LinearLayout android:id="@+id/wn_head" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="6dp" android:paddingEnd="6dp" android:paddingTop="2dp">
+        <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/wl_thermo_fg" />
+        <TextView android:id="@+id/wn_title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="6dp" android:text="Nest" android:maxLines="1" android:ellipsize="end" android:textColor="@color/w_fg" android:textSize="14sp" android:textStyle="bold" />
+        <TextView android:id="@+id/wn_hum" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/w_fg_muted" android:textSize="11sp" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/wn_mid" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+        <TextView android:id="@+id/wn_temp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/w_fg" android:textSize="34sp" android:textStyle="bold" android:includeFontPadding="false" />
+        <TextView android:id="@+id/wn_target" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end" android:textColor="@color/w_fg_muted" android:textSize="12sp" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/wn_btns" android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/wn_down" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/wl_tile" android:gravity="center">
+            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/wl_minus" android:tint="@color/w_fg" />
+        </LinearLayout>
+        <TextView android:id="@+id/wn_set" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:textColor="@color/w_fg" android:textSize="15sp" android:textStyle="bold" />
+        <LinearLayout android:id="@+id/wn_up" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/wl_tile" android:gravity="center">
+            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/wl_plus" android:tint="@color/w_fg" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

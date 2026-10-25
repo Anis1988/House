@@ -134,6 +134,13 @@ const Net = plugin("Net", {
   addThisPhone: async ({ name }) => { const s = store.json("mock.watch", {}); s.people = [...(s.people || []).filter((p) => p.key !== "this-phone"), { key: "this-phone", name }]; store.setJson("mock.watch", s); return { settings: s, presence: { "this-phone": { home: true, since: Date.now() } }, notifications: true }; },
   speedTest: async () => (await sleep(1500), { down: 512.3, up: 41.7, ping: 12 }),
   flashTest: async () => {},
+  getAuto: async () => ({ settings: store.json("mock.auto", {}), dark: true }),
+  setAuto: async ({ settings }) => (store.setJson("mock.auto", settings), { settings, dark: true }),
+  tvState: async () => ({ on: false }),
+  homeStatus: async () => ({ people: [{ key: "this-phone", name: "Anis", home: true, since: Date.now() - 7200e3, seenAt: Date.now() }, { key: "aa", name: "Roza", home: false, since: Date.now() - 1800e3, seenAt: Date.now() - 1800e3 }],
+    atHome: true, netUp: true, lastSpeed: { down: 512.3, up: 41.7, ping: 12, at: Date.now() - 3600e3 },
+    nest: { temp: 21.4, hum: 41, mode: "HEAT", eco: "OFF", heat: 21, scale: "CELSIUS", hvac: "HEATING", at: Date.now() }, ring: { at: Date.now() - 5400e3, kind: "ring", device: "Front door", image: null } }),
+  nestQuick: async ({ dir }) => ({ temp: 21.4, hum: 41, mode: "HEAT", eco: "OFF", heat: 21 + 0.5 * (dir || 0), scale: "CELSIUS", hvac: "HEATING", at: Date.now() }),
   router: async (a) => mockRouter(a),
   qr: async () => ({ dataUrl: "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#fff"/><rect x="1" y="1" width="3" height="3"/><rect x="6" y="1" width="3" height="3"/><rect x="1" y="6" width="3" height="3"/><rect x="5" y="5" width="2" height="2"/></svg>') }),
 });

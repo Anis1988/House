@@ -368,11 +368,13 @@
         <div class="list"><button class="ghost center" id="nestSubTest">Save and test</button></div>
         <p class="note err" id="nestNotif" hidden>Notifications are off for House: turn them on in your phone's Settings → Apps → House.</p>
       </div>
+      <div id="autoDoor"></div>
       <div class="label">Units</div>
       <div class="card glass"><div class="seg3" id="nestUnit" style="--n:2"><button data-unit="C">°C</button><button data-unit="F">°F</button></div></div>`,
     guide: [
       ["thermo", "Thermostat", "The dial shows what it's set to and the temperature inside. − and + change it; the buttons below switch Heat, Cool, Heat·Cool or Off. Eco saves energy while you're away."],
-      ["bell", "Doorbell", "Shows your doorbell once it's shared. Live view and ring alerts come later."],
+      ["bell", "Doorbell", "Watch live from the Doorbell tab. With doorbell events set up (Settings), rings and people at the door send a notification."],
+      ["bulb", "Doorbell lights", "Settings → Doorbell lights: after dark, a ring or a person at the door turns on the lights you pick for a few minutes."],
       ["key", "Setting up", "Nest only talks to Google's cloud, so you make your own Device Access project once (Settings walks you through it, $5 to Google). Your sign-in stays on this phone."],
     ],
     mount() {

@@ -69,6 +69,29 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_wifi_info" />
         </receiver>
 
+        <receiver android:name=".NestWidget" android:exported="true" android:label="Nest thermostat">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_nest_info" />
+        </receiver>
+        <receiver android:name=".DoorbellWidget" android:exported="true" android:label="Doorbell">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_door_info" />
+        </receiver>
+
+        <!-- Quick Settings tiles -->
+        <service android:name=".LightsTile" android:exported="true" android:label="Lights" android:icon="@drawable/wl_bulb" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".SceneTile" android:exported="true" android:label="Scene" android:icon="@drawable/wl_star" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".NestTile" android:exported="true" android:label="Nest away" android:icon="@drawable/wl_thermo" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
+        <!-- App-icon shortcuts run a scene without opening the app -->
+        <activity android:name=".ShortcutActivity" android:exported="false" android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true" android:noHistory="true" android:taskAffinity="" />
+
         <!-- Pick the bulb for a One light widget -->
         <activity android:name=".OneLightConfig" android:exported="true" android:theme="@style/AppTheme.NoActionBar" android:excludeFromRecents="true">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>

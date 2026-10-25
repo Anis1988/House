@@ -118,12 +118,50 @@ final class HouseActions {
         ws.close(1000, null);
     }
 
+    /**
+     * Is the LG TV on (screen showing)? It only answers on the network when it's on; with
+     * "Quick Start+" it may answer in standby too, so its power state is asked as well. Blocking.
+     */
+    static boolean lgIsOn(Context ctx) {
+        JSONObject c = creds(ctx);
+        String ip = c.optString("lgIp"), key = c.optString("lgKey");
+        if (ip.isEmpty() || key.isEmpty()) return false;
+        try {
+            CountDownLatch got = new CountDownLatch(1);
+            java.util.concurrent.atomic.AtomicReference<String> state = new java.util.concurrent.atomic.AtomicReference<>("");
+            WebSocket ws = lgConnect(ip, key, c.optString("lgManifest", "{}"), 3000, (text) -> {
+                if (!text.contains("\"power\"")) return;
+                try {
+                    JSONObject j = new JSONObject(text);
+                    JSONObject p = j.optJSONObject("payload");
+                    state.set(p == null ? "" : p.optBoolean("returnValue", true) ? p.optString("state", "Active") : "unknown");
+                } catch (JSONException ignored) {}
+                got.countDown();
+            });
+            if (ws == null) return false;
+            ws.send(new JSONObject().put("id", "power").put("type", "request").put("uri", "ssap://com.webos.service.tvpower/power/getPowerState").toString());
+            got.await(2500, TimeUnit.MILLISECONDS);
+            ws.close(1000, null);
+            String s = state.get();
+            // "Active" = on. Standby ("Active Standby", "Suspend"), "Screen Off" = off. No answer: it registered, so on.
+            return s.isEmpty() || "unknown".equals(s) || "Active".equals(s);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private static String req(String uri, JSONObject payload) throws JSONException {
         return new JSONObject().put("id", "h" + System.nanoTime()).put("type", "request").put("uri", uri).put("payload", payload).toString();
     }
 
-    /** Opens and registers with the saved key; null if the TV doesn't answer (off). */
+    private interface OnText { void on(String text); }
+
     private static WebSocket lgConnect(String ip, String key, String manifest, long waitMs) throws Exception {
+        return lgConnect(ip, key, manifest, waitMs, null);
+    }
+
+    /** Opens and registers with the saved key; null if the TV doesn't answer (off). */
+    private static WebSocket lgConnect(String ip, String key, String manifest, long waitMs, OnText listener) throws Exception {
         CountDownLatch done = new CountDownLatch(1);
         AtomicBoolean ok = new AtomicBoolean(false);
         WebSocket ws = LanNet.client().newWebSocket(new Request.Builder().url("wss://" + ip + ":3001").build(), new WebSocketListener() {
@@ -141,6 +179,7 @@ final class HouseActions {
             @Override
             public void onMessage(WebSocket w, String text) {
                 if (text.contains("\"registered\"")) { ok.set(true); done.countDown(); }
+                else if (listener != null) listener.on(text);
             }
 
             @Override

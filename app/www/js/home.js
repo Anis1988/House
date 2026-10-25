@@ -499,7 +499,8 @@
       </div>
       <div class="label">Scenes</div>
       <div class="card glass"><button class="ghost center" id="homeRestore">Bring back built-in scenes</button>
-        <p class="note">Puts back Bright, Movie, Night light and All off if you deleted them. Your own scenes stay.</p></div>`,
+        <p class="note">Puts back Bright, Movie, Night light and All off if you deleted them. Your own scenes stay.</p></div>
+      <div id="autoQs"></div>`,
     guide: [
       ["star", "Scenes", "Tap a scene to run it. Bright, Movie, Night light and All off come with the app; change or delete them like your own."],
       ["plus", "Make a scene", "New scene → a name, an icon and its colour, then each light On (with its brightness), Off, or Leave as it is. Add the TV (on/off, an app, volume), the Samsung screen, Nest (mode and temperature, or Eco) and the cameras. Try it before saving."],

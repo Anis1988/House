@@ -305,12 +305,14 @@ const LG = (() => {
         </div>
         <p class="note" id="tvMac"></p>
         <p class="note">The full remote (keyboard, sleep timer, picture modes) is in the <b>LG TV Remote</b> app.</p>
-      </div>`,
+      </div>
+      <div id="autoMovie"></div>`,
     guide: [
       ["tv", "First time", "Turn the TV on and tap Find my TV. The TV asks once whether to allow this app: choose Accept."],
       ["power", "On and off", "The switch turns the TV off, and back on over Wi-Fi (once the app has seen the TV on)."],
       ["remote", "Remote", "Arrows and OK move around the TV's menus. Volume and channel are under them; the bar sets the volume exactly."],
       ["apps", "Apps and inputs", "The Apps tab opens any app on the TV or switches to HDMI inputs."],
+      ["bulb", "Movie mode", "Settings → Movie mode: when the TV turns on in the evening, the living room dims by itself, and comes back when the TV turns off."],
     ],
     mount() {
       LG.onChange = () => { paint(); if (LG.ready) { refresh(); if (!apps.length) loadApps(); } };

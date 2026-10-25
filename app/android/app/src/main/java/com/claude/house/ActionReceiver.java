@@ -92,6 +92,18 @@ public class ActionReceiver extends BroadcastReceiver {
             }).start();
             return;
         }
+        if (HomeAuto.ACTION_TV.equals(intent.getAction())) {
+            PendingResult result = goAsync();
+            new Thread(() -> {
+                try {
+                    HomeAuto.tvCheck(app);
+                } catch (Exception ignored) {
+                } finally {
+                    result.finish();
+                }
+            }).start();
+            return;
+        }
         if (SceneOffs.ACTION.equals(intent.getAction())) {
             PendingResult result = goAsync();
             worker.execute(() -> {

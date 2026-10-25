@@ -139,6 +139,19 @@ final class SceneOffs {
         Widgets.redrawAll(ctx);
     }
 
+    /** The lights a scene's countdown will turn off (empty if it has none). */
+    static java.util.Set<String> lightsOf(Context ctx, String sceneId) {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        JSONArray list = pending(ctx);
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject p = list.optJSONObject(i);
+            if (p == null || !sceneId.equals(p.optString("scene"))) continue;
+            JSONArray ids = p.optJSONArray("ids");
+            for (int j = 0; ids != null && j < ids.length(); j++) out.add(ids.optString(j));
+        }
+        return out;
+    }
+
     /** For the page: { sceneId: epoch ms when its lights go off }. */
     static JSONObject countdowns(Context ctx) {
         JSONObject out = new JSONObject();

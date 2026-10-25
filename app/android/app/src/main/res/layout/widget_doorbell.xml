@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Doorbell: the last ring or person, with its picture when the doorbell gives one -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/wd_root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_bg" android:orientation="vertical" android:padding="8dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="6dp" android:paddingEnd="6dp" android:paddingTop="2dp" android:paddingBottom="6dp">
+        <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/wl_bell_fg" />
+        <TextView android:id="@+id/wd_title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="6dp" android:text="Doorbell" android:maxLines="1" android:ellipsize="end" android:textColor="@color/w_fg" android:textSize="14sp" android:textStyle="bold" />
+        <TextView android:id="@+id/wd_when" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/w_fg_muted" android:textSize="11sp" />
+    </LinearLayout>
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:background="@drawable/wl_photo_bg">
+        <ImageView android:id="@+id/wd_img" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:visibility="gone" />
+        <TextView android:id="@+id/wd_msg" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:padding="10dp" android:textColor="@color/w_fg_muted" android:textSize="12sp" />
+    </FrameLayout>
+</LinearLayout>

@@ -660,6 +660,109 @@ public class NetPlugin extends Plugin {
         });
     }
 
+    // ---- Automations (doorbell lights, TV movie mode, Quick Settings scene) ----
+
+    /** → { settings, dark } */
+    @PluginMethod
+    public void getAuto(PluginCall call) {
+        try {
+            JSObject r = new JSObject();
+            r.put("settings", new JSObject(HomeAuto.settings(getContext()).toString()));
+            r.put("dark", HomeAuto.isDark(getContext()));
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** { settings } replaces them. */
+    @PluginMethod
+    public void setAuto(PluginCall call) {
+        try {
+            HomeAuto.save(getContext(), new org.json.JSONObject(call.getObject("settings", new JSObject()).toString()));
+            getAuto(call);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** Is the LG TV on right now? → { on } */
+    @PluginMethod
+    public void tvState(PluginCall call) {
+        pool.execute(() -> {
+            JSObject r = new JSObject();
+            r.put("on", HouseActions.lgIsOn(getContext()));
+            call.resolve(r);
+        });
+    }
+
+    // ---- Home overview ----
+
+    /**
+     * { refresh? } → { people: [{ key, name, home, since, seenAt }], atHome, netUp (null = not watched),
+     *   lastSpeed, nest (state, fresh with refresh), ring: { at, kind, device, image (data URL) } }
+     */
+    @PluginMethod
+    public void homeStatus(PluginCall call) {
+        boolean refresh = call.getBoolean("refresh", false);
+        pool.execute(() -> {
+            try {
+                android.content.Context ctx = getContext();
+                android.content.SharedPreferences p = ctx.getSharedPreferences(Lifx.PREFS, android.content.Context.MODE_PRIVATE);
+                JSObject r = new JSObject();
+                org.json.JSONArray people = WifiWatch.settings(ctx).optJSONArray("people");
+                org.json.JSONObject pres = WifiWatch.presence(ctx);
+                JSArray ps = new JSArray();
+                for (int i = 0; people != null && i < people.length(); i++) {
+                    org.json.JSONObject person = people.getJSONObject(i);
+                    String key = person.optString("key").toLowerCase(java.util.Locale.ROOT);
+                    org.json.JSONObject st = pres.optJSONObject(key);
+                    JSObject o = new JSObject();
+                    o.put("key", key);
+                    o.put("name", person.optString("name"));
+                    o.put("home", st != null && st.optBoolean("home"));
+                    o.put("since", st == null ? 0 : st.optLong("since"));
+                    o.put("seenAt", st == null ? 0 : st.optLong("seenAt", st.optLong("since")));
+                    ps.put(o);
+                }
+                r.put("people", ps);
+                r.put("atHome", Presence.atHome(ctx));
+                r.put("netUp", WifiLog.outageWatchOn(ctx) && p.contains("netUp") ? p.getBoolean("netUp", true) : null);
+                r.put("lastSpeed", new JSObject(p.getString("lastSpeed", "{}")));
+                boolean nestOn = !HouseActions.creds(ctx).optString("nestRefresh").isEmpty();
+                r.put("nest", nestOn ? new JSObject((refresh ? NestWatch.refresh(ctx) : NestWatch.state(ctx)).toString()) : null);
+                org.json.JSONObject ring = NestWatch.lastRing(ctx);
+                JSObject rg = new JSObject(ring.toString());
+                java.io.File f = new java.io.File(ctx.getFilesDir(), "doorbell.jpg");
+                if (ring.optBoolean("image") && f.exists()) {
+                    byte[] bytes = java.nio.file.Files.readAllBytes(f.toPath());
+                    rg.put("image", "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP));
+                } else {
+                    rg.put("image", null);
+                }
+                r.put("ring", ring.has("at") ? rg : null);
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage());
+            }
+        });
+    }
+
+    /** Nest warmer (+1) or cooler (-1), or Eco on/off: { dir } or { eco } → state */
+    @PluginMethod
+    public void nestQuick(PluginCall call) {
+        pool.execute(() -> {
+            try {
+                org.json.JSONObject s;
+                if (call.getData().has("eco")) { NestWatch.eco(getContext(), call.getBoolean("eco", false)); s = NestWatch.state(getContext()); }
+                else s = NestWatch.adjust(getContext(), call.getInt("dir", 1));
+                call.resolve(new JSObject(s.toString()));
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "Nest didn't answer" : e.getMessage());
+            }
+        });
+    }
+
     // ---- ASUS router controls ----
 
     /** { op, ... } → see RouterControl.op. */

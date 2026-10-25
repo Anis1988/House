@@ -90,7 +90,7 @@ final class NestWatch {
 
     private static boolean ringWanted(Context ctx) {
         JSONObject s = settings(ctx);
-        return (s.optBoolean("ring") || s.optBoolean("motion")) && !HouseActions.creds(ctx).optString("nestSub").isEmpty();
+        return (s.optBoolean("ring") || s.optBoolean("motion") || HomeAuto.doorWanted(ctx)) && !HouseActions.creds(ctx).optString("nestSub").isEmpty();
     }
 
     private static void ringAt(Context ctx, long at) {
@@ -157,6 +157,7 @@ final class NestWatch {
                     name = d.getJSONArray("parentRelations").getJSONObject(0).optString("displayName");
                 }
                 names.put(d.optString("name"), name);
+                if ("sdm.devices.types.THERMOSTAT".equals(d.optString("type")) && traits != null) saveState(ctx, d.optString("name"), traits);
                 if (point == null && "sdm.devices.types.THERMOSTAT".equals(d.optString("type")) && traits != null) {
                     JSONObject t = traits.optJSONObject("sdm.devices.traits.Temperature"), h = traits.optJSONObject("sdm.devices.traits.Humidity");
                     if (t != null && t.has("ambientTemperatureCelsius")) {
@@ -250,6 +251,11 @@ final class NestWatch {
             if (device.isEmpty()) device = "Doorbell";
             for (Iterator<String> it = events.keys(); it.hasNext(); ) {
                 String ev = it.next();
+                if (ev.endsWith("DoorbellChime.Chime") || ev.endsWith("CameraPerson.Person")) {
+                    String kind = ev.endsWith("Chime") ? "ring" : "person";
+                    HomeAuto.doorbell(ctx, kind);
+                    lastRing(ctx, kind, device, at > 0 ? at : now, update.optString("name"), events.optJSONObject(ev), token);
+                }
                 if (ev.endsWith("DoorbellChime.Chime") && s.optBoolean("ring")) {
                     notify(ctx, "door", "Doorbell", NotificationManager.IMPORTANCE_HIGH, (int) (at % 100000) + 1000, "Someone's at the door", device + ": the doorbell rang");
                 } else if (ev.endsWith("CameraPerson.Person") && s.optBoolean("motion")) {
@@ -261,6 +267,133 @@ final class NestWatch {
         }
         if (acks.length() > 0) post("https://pubsub.googleapis.com/v1/" + sub + ":acknowledge", token, new JSONObject().put("ackIds", acks));
         return msgs.length();
+    }
+
+    // ---- Thermostat state (widget, Quick Settings tile, Home overview) ----
+
+    /** { at, name, temp, hum, mode, eco, heat, cool, scale: "CELSIUS"|"FAHRENHEIT", hvac } */
+    static JSONObject state(Context ctx) {
+        try {
+            return new JSONObject(prefs(ctx).getString("nestState", "{}"));
+        } catch (JSONException e) {
+            return new JSONObject();
+        }
+    }
+
+    private static void saveState(Context ctx, String name, JSONObject traits) {
+        try {
+            JSONObject t = traits.optJSONObject("sdm.devices.traits.Temperature"), h = traits.optJSONObject("sdm.devices.traits.Humidity"),
+                mode = traits.optJSONObject("sdm.devices.traits.ThermostatMode"), eco = traits.optJSONObject("sdm.devices.traits.ThermostatEco"),
+                sp = traits.optJSONObject("sdm.devices.traits.ThermostatTemperatureSetpoint"), set = traits.optJSONObject("sdm.devices.traits.Settings"),
+                hvac = traits.optJSONObject("sdm.devices.traits.ThermostatHvac");
+            JSONObject s = new JSONObject().put("at", System.currentTimeMillis()).put("name", name);
+            if (t != null && t.has("ambientTemperatureCelsius")) s.put("temp", t.optDouble("ambientTemperatureCelsius"));
+            if (h != null && h.has("ambientHumidityPercent")) s.put("hum", h.optDouble("ambientHumidityPercent"));
+            if (mode != null) s.put("mode", mode.optString("mode"));
+            if (eco != null) s.put("eco", eco.optString("mode"));
+            if (sp != null && sp.has("heatCelsius")) s.put("heat", sp.optDouble("heatCelsius"));
+            if (sp != null && sp.has("coolCelsius")) s.put("cool", sp.optDouble("coolCelsius"));
+            if (set != null) s.put("scale", set.optString("temperatureScale", "CELSIUS"));
+            if (hvac != null) s.put("hvac", hvac.optString("status"));
+            prefs(ctx).edit().putString("nestState", s.toString()).apply();
+        } catch (JSONException ignored) {}
+    }
+
+    /** Fresh state now (and redraw the Nest widgets). Blocking. */
+    static JSONObject refresh(Context ctx) {
+        tick(ctx);
+        Widgets.redrawNest(ctx);
+        return state(ctx);
+    }
+
+    /** One step warmer (+1) or cooler (-1): 0.5 °C, or 1 °F with Fahrenheit. Blocking. */
+    static JSONObject adjust(Context ctx, int dir) throws Exception {
+        JSONObject s = state(ctx);
+        if (s.optString("name").isEmpty()) s = refresh(ctx);
+        String name = s.optString("name"), mode = s.optString("mode");
+        if (name.isEmpty()) throw new Exception("No thermostat");
+        if ("MANUAL_ECO".equals(s.optString("eco"))) throw new Exception("Nest is in Eco");
+        boolean f = "FAHRENHEIT".equals(s.optString("scale"));
+        double step = f ? 5.0 / 9 : 0.5;
+        String token = token(ctx);
+        String url = SDM + name + ":executeCommand";
+        if ("HEAT".equals(mode)) {
+            double v = round(s.optDouble("heat", 20) + dir * step, f);
+            post(url, token, cmd("ThermostatTemperatureSetpoint.SetHeat", new JSONObject().put("heatCelsius", v)));
+            s.put("heat", v);
+        } else if ("COOL".equals(mode)) {
+            double v = round(s.optDouble("cool", 24) + dir * step, f);
+            post(url, token, cmd("ThermostatTemperatureSetpoint.SetCool", new JSONObject().put("coolCelsius", v)));
+            s.put("cool", v);
+        } else if ("HEATCOOL".equals(mode)) {
+            double hv = round(s.optDouble("heat", 20) + dir * step, f), cv = round(s.optDouble("cool", 24) + dir * step, f);
+            post(url, token, cmd("ThermostatTemperatureSetpoint.SetRange", new JSONObject().put("heatCelsius", hv).put("coolCelsius", cv)));
+            s.put("heat", hv).put("cool", cv);
+        } else {
+            throw new Exception("Nest is off");
+        }
+        prefs(ctx).edit().putString("nestState", s.toString()).apply();
+        Widgets.redrawNest(ctx);
+        return s;
+    }
+
+    /** Eco on (away) or off. Blocking. */
+    static void eco(Context ctx, boolean on) throws Exception {
+        JSONObject s = state(ctx);
+        if (s.optString("name").isEmpty()) s = refresh(ctx);
+        if (s.optString("name").isEmpty()) throw new Exception("No thermostat");
+        post(SDM + s.optString("name") + ":executeCommand", token(ctx), cmd("ThermostatEco.SetMode", new JSONObject().put("mode", on ? "MANUAL_ECO" : "OFF")));
+        prefs(ctx).edit().putString("nestState", s.put("eco", on ? "MANUAL_ECO" : "OFF").toString()).apply();
+        Widgets.redrawNest(ctx);
+    }
+
+    private static JSONObject cmd(String c, JSONObject params) throws JSONException {
+        return new JSONObject().put("command", "sdm.devices.commands." + c).put("params", params);
+    }
+
+    /** Keeps setpoints on the thermostat's own steps: 0.5 °C, or whole °F. */
+    private static double round(double c, boolean f) {
+        if (f) return (Math.round(c * 9 / 5 + 32) - 32) * 5 / 9.0;
+        return Math.round(c * 2) / 2.0;
+    }
+
+    // ---- Last doorbell ring, with a picture when the doorbell offers one ----
+
+    /** { at, kind: "ring"|"person", device } and the picture in files/doorbell.jpg */
+    static JSONObject lastRing(Context ctx) {
+        try {
+            return new JSONObject(prefs(ctx).getString("lastRing", "{}"));
+        } catch (JSONException e) {
+            return new JSONObject();
+        }
+    }
+
+    private static void lastRing(Context ctx, String kind, String device, long at, String deviceName, JSONObject ev, String token) {
+        try {
+            JSONObject r = new JSONObject().put("at", at).put("kind", kind).put("device", device).put("image", false);
+            // Older Nest doorbells give a still for each event (newer ones don't: then there's no picture).
+            String eventId = ev == null ? "" : ev.optString("eventId");
+            if (!eventId.isEmpty()) {
+                try {
+                    JSONObject res = post(SDM + deviceName + ":executeCommand", token, cmd("CameraEventImage.GenerateImage", new JSONObject().put("eventId", eventId)));
+                    JSONObject results = res.optJSONObject("results");
+                    if (results != null && !results.optString("url").isEmpty()) {
+                        try (Response img = web.newCall(new Request.Builder().url(results.optString("url") + "?width=640")
+                            .header("Authorization", "Basic " + results.optString("token")).build()).execute()) {
+                            if (img.isSuccessful()) {
+                                java.io.File tmp = new java.io.File(ctx.getFilesDir(), "doorbell.tmp");
+                                try (java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) { out.write(img.body().bytes()); }
+                                if (tmp.renameTo(new java.io.File(ctx.getFilesDir(), "doorbell.jpg"))) r.put("image", true);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "doorbell image", e);
+                }
+            }
+            prefs(ctx).edit().putString("lastRing", r.toString()).apply();
+            Widgets.redrawDoorbell(ctx);
+        } catch (JSONException ignored) {}
     }
 
     private static long parseTime(String iso) {

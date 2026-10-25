@@ -484,3 +484,25 @@ nav button.on svg { color: var(--at); }
 /* Away from home: last known state, controls dimmed */
 .away-note { border-color: color-mix(in srgb, var(--a1) 40%, transparent); }
 #wcBody.away button:not([data-profile]):not(#wcNewProfile), #wcBody.away input, #wcBody.away select, #wcHealth.away button, #wcHealth.away select, #wcHealth.away input { opacity: .45; pointer-events: none; }
+
+/* Home overview */
+.ov-card { position: relative; cursor: pointer; }
+.ov-card .ov-ic { position: absolute; top: 14px; right: 14px; color: var(--at); opacity: .8; }
+.ov-card .ov-ic svg { width: 20px; height: 20px; }
+.ov-big { font-size: 30px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ov-big.small { font-size: 22px; }
+.ov-big.bad { color: var(--bad); }
+.ov-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.ov-btn { margin-top: 10px; min-height: 38px; padding: 6px 10px; font-size: 13px; }
+.ov-steps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ov-steps .ov-btn svg { width: 16px; height: 16px; }
+.ov-people { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; }
+.ov-person { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--muted); font-weight: 600; }
+.ov-person.in { color: var(--text); }
+.ov-photo { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; margin: 26px 0 8px; }
+.ov-scenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.ov-scene { border-radius: 18px; padding: 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12.5px; }
+.ov-scene .ic { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: #fff; }
+.ov-scene .ic svg { width: 19px; height: 19px; }
+.ov-scene b { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-scene:active { transform: scale(.96); }
