@@ -15,7 +15,7 @@ Every push to `main` builds and publishes the next version, and the app shows an
 | 🖥️ Samsung screen (Odyssey G7) | Home Wi-Fi; Allow once on the screen | Remote · Settings |
 | 🌡️ Nest thermostat + doorbell | Google Device Access (your own project, $5 once) | Thermostat · Doorbell · Settings |
 | 📷 Wyze cameras | Wyze cloud; your login + free API key | Cameras · Events · Settings |
-| 📶 Wi-Fi | Finds devices itself; optional ASUS router sign-in for the full list and controls | Devices · Control · History · Tools · Settings |
+| 📶 Wi-Fi | Finds devices itself; optional ASUS router sign-in for the full list and controls | Devices · Settings (foldable sections) |
 
 Any side can be hidden in Settings → Devices in the app. Logins and keys stay on the phone.
 

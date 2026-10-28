@@ -1,6 +1,7 @@
-// Wi-Fi controls through the ASUS router (native RouterControl): the Control tab (what's paused
-// right now, profiles, Focus time, pause everyone, Internet bedtime, device priority, guest
-// Wi-Fi, Wi-Fi password) and the Router, Data use and Wi-Fi signal cards on the Tools tab.
+// Wi-Fi controls through the ASUS router (native RouterControl). On the Devices tab: what's
+// paused right now, then foldable Pause everyone, Focus time, Profiles, Internet bedtime and
+// Device priority, and the Router and Data use tools. In Settings: Guest Wi-Fi, Wi-Fi password
+// and the devices Pause everyone keeps on.
 // Used by the Wi-Fi side (wifi.js). Profiles group a person's devices: kept on this phone.
 
 (() => {
@@ -45,50 +46,39 @@
     return { macs: mac ? [mac] : [], label: nameOf(mac) };
   }
 
-  /* ---- Control tab ---- */
+  /* ---- Controls (Devices tab) and their settings ---- */
+  const F = (key, title, icon, body, opts) => House.fold("wifi." + key, title, icon, body, opts);
   const controlHtml = `
-    <div class="card glass" id="wcNeed" hidden><div class="head-card"><div class="grow"><b>Sign in to your router</b><p class="note" style="margin:4px 0 0">These controls work through your ASUS router. Wi-Fi → Settings → Router.</p></div></div></div>
+    <div class="card glass" id="wcNeed" hidden><p class="note" style="margin:0">Sign in to your ASUS router (Settings → Router) to pause devices, set bedtimes and more.</p></div>
     <div id="wcBody">
       <div id="wcAway"></div>
-      <div class="label">Right now</div>
       <div class="card glass" id="wcNow"><p class="note" style="margin:0">Checking the router…</p></div>
-      <div class="label">Profiles</div>
-      <div class="card glass"><div id="wcProfiles"></div><div class="list"><button class="ghost center" id="wcNewProfile">New profile</button></div>
-        <p class="note">Put a person's devices together (phone, tablet, laptop), then pause, Focus time, bedtime and priority work on all of them at once.</p></div>
-      <div class="label">Focus time</div>
-      <div class="card glass">
+      ${F("pauseAll", "Pause everyone", "power", `
+        <label class="fld" style="margin-top:0">For<select class="field" id="wcAllMin"><option value="0">Until I resume</option><option value="30">30 min</option><option value="60">1 h</option><option value="120">2 h</option></select></label>
+        <div class="list"><button class="ghost center danger" id="wcAllGo">Pause everyone else</button></div>`, { subId: "wcAllSub" })}
+      ${F("focus", "Focus time", "clock", `
         <label class="fld" style="margin-top:0">Who<select class="field" id="wcFocusWho"></select></label>
         <div class="mini-seg" id="wcFocusMin" style="margin-top:10px"><button data-fm="30">30 min</button><button data-fm="60">1 h</button><button data-fm="120">2 h</button></div>
         <div class="list"><button class="primary full" id="wcFocusGo">Pause their internet</button></div>
-        <p class="note">Their internet comes back by itself when the time is up (your phone needs to be home then; it keeps trying).</p>
-      </div>
-      <div class="label">Pause everyone</div>
-      <div class="card glass">
-        <p class="note" style="margin-top:0">Keep these on:</p>
-        <div class="chips" id="wcKeep"></div>
-        <label class="fld">For<select class="field" id="wcAllMin"><option value="0">Until I resume</option><option value="30">30 min</option><option value="60">1 h</option><option value="120">2 h</option></select></label>
-        <div class="list"><button class="ghost center danger" id="wcAllGo">Pause everyone else</button></div>
-      </div>
-      <div class="label">Internet bedtime</div>
-      <div class="card glass"><div id="wcBeds"></div><div class="list"><button class="ghost center" id="wcBedAdd">Add a bedtime</button></div>
-        <p class="note">The router keeps the schedule, so it works even when your phone is away.</p></div>
-      <div class="label">Device priority</div>
-      <div class="card glass">
+        <p class="note">Comes back by itself when the time is up.</p>`, { sub: "Pause someone for a while" })}
+      ${F("profiles", "Profiles", "phone", `<div id="wcProfiles"></div><div class="list"><button class="ghost center" id="wcNewProfile">New profile</button></div>
+        <p class="note">A person's devices together: pause, Focus time, bedtime and priority then work on all of them.</p>`, { subId: "wcProfSub" })}
+      ${F("bedtime", "Internet bedtime", "moon", `<div id="wcBeds"></div><div class="list"><button class="ghost center" id="wcBedAdd">Add a bedtime</button></div>
+        <p class="note">Kept by the router, so it works with your phone away.</p>`, { subId: "wcBedSub" })}
+      ${F("priority", "Device priority", "star", `
         <label class="fld" style="margin-top:0">Who<select class="field" id="wcPrioWho"></select></label>
         <label class="fld">For<select class="field" id="wcPrioMin"><option value="60">1 h</option><option value="120" selected>2 h</option><option value="240">4 h</option><option value="0">Until I stop it</option></select></label>
         <div class="list"><button class="primary full" id="wcPrioGo">Give priority</button></div>
-        <p class="note">Gets bandwidth first: good for a movie or a work call. Needs QoS turned on in the router.</p>
-      </div>
-      <div class="label">Guest Wi-Fi</div>
-      <div class="card glass" id="wcGuest"><p class="note" style="margin:0">Checking the router…</p></div>
-      <div class="label">Wi-Fi password</div>
-      <div class="card glass">
-        <label class="fld" style="margin-top:0">New password<input class="field" id="wcPass" type="password" autocomplete="new-password" minlength="8"></label>
-        <label class="fld">Type it again<input class="field" id="wcPass2" type="password" autocomplete="new-password"></label>
-        <div class="list"><button class="ghost center danger" id="wcPassGo">Change Wi-Fi password</button></div>
-        <p class="note">Every device has to join again with the new password, including this phone. Sent only to your router.</p>
-      </div>
+        <p class="note">Gets bandwidth first, for a movie or a work call. Needs QoS on in the router.</p>`, { sub: "Bandwidth first for a while" })}
     </div>`;
+  // For Settings.
+  const guestHtml = `<div id="wcGuest" data-wc><p class="note" style="margin:0">Sign in to your router to turn the guest network on and off.</p></div>`;
+  const passwordHtml = `<div data-wc>
+    <label class="fld" style="margin-top:0">New password<input class="field" id="wcPass" type="password" autocomplete="new-password" minlength="8"></label>
+    <label class="fld">Type it again<input class="field" id="wcPass2" type="password" autocomplete="new-password"></label>
+    <div class="list"><button class="ghost center danger" id="wcPassGo">Change Wi-Fi password</button></div>
+    <p class="note">Every device has to join again with the new password, including this phone. Sent only to your router.</p></div>`;
+  const keepHtml = `<div data-wc><p class="note" style="margin-top:0">Pause everyone leaves these online:</p><div class="chips" id="wcKeep"></div></div>`;
 
   async function loadControl() {
     if (!signed()) { paintControl(); return; }
@@ -125,6 +115,10 @@
       .map((d) => `<button data-keep="${esc(lc(d.mac))}" class="${keep.has(lc(d.mac)) ? "on" : ""}">${esc(d.label)}</button>`).join("") || `<p class="note" style="margin:0">Refresh the Devices tab first.</p>`;
     paintBeds();
     paintGuest();
+    const k = keepList();
+    $("wcAllSub").textContent = k.length ? `Keeps on: ${k.map(nameOf).join(", ")}` : "Keeps nothing on (choose in Settings)";
+    const n = profiles().length;
+    $("wcProfSub").textContent = n ? `${n} profile${n === 1 ? "" : "s"}` : "A person's devices together";
   }
 
   function paintNow() {
@@ -169,6 +163,7 @@
       }
     }
     for (const [mac, f] of Object.entries(filters)) if (f.bedtime && !done.has(mac)) rows.push({ label: nameOf(mac), macs: [mac], b: f.bedtime });
+    $("wcBedSub").textContent = rows.length ? rows.map((r) => r.label).join(", ") : "Internet off at night";
     $("wcBeds").innerHTML = rows.map((r) => `<div class="set-row"><span class="ic-sm">${svg("moon")}</span><div class="set-text"><b>${esc(r.label)}</b><span>${daysText(r.b.days)} · ${hhmm(r.b.start)} – ${hhmm(r.b.end)} offline</span></div><button class="ghost center auto danger" data-unbed="${esc(r.macs.join(","))}">Remove</button></div>`).join("")
       || `<p class="note" style="margin:0">No bedtimes. Add one to turn a device's internet off at night.</p>`;
   }
@@ -250,18 +245,14 @@
     };
   }
 
-  /* ---- Tools cards: router health, data use, Wi-Fi signal ---- */
+  /* ---- Tools (Devices tab): router health, data use. Loaded when opened. ---- */
   const toolsHtml = `
-    <div class="label">Router</div>
-    <div class="card glass" id="wcHealth"></div>
-    <div class="label">Data use</div>
-    <div class="card glass" id="wcUsage"></div>
-    <div class="label">Wi-Fi signal</div>
-    <div class="card glass" id="wcSignal"></div>`;
+    ${F("router", "Router", "router", `<div id="wcHealth" data-wc></div>`, { subId: "wcHealthSub", sub: "Health, updates, restart" })}
+    ${F("usage", "Data use", "chart", `<div id="wcUsage" data-wc></div>`, { sub: "Who used the most" })}`;
+  const toolsOpen = () => !!document.querySelector('details[data-fold="wifi.router"][open], details[data-fold="wifi.usage"][open]');
 
   const upFor = (s) => { const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600); return d ? `${d} d ${h} h` : `${h} h ${Math.floor(s % 3600 / 60)} min`; };
   async function loadTools() {
-    paintSignal();
     if (!signed()) { paintHealth(); paintUsage(); return; }
     const cache = store.json("wifi.tools", null);
     if (away() && cache) { ({ health, reboot, usage } = cache); showingCache.tools = cache.at; paintHealth(); paintUsage(); }
@@ -288,6 +279,7 @@
     const h = health, r = reboot || { on: false, days: "1000000", time: "0300" };
     const day = Math.max(0, r.days.indexOf("1"));
     box.classList.toggle("away", showingCache.tools !== false);
+    $("wcHealthSub").textContent = `${h.model || "Router"} · ${h.update ? "update ready" : "up to date"}${h.cpu != null ? ` · CPU ${h.cpu}%` : ""}`;
     box.innerHTML = (showingCache.tools !== false ? `<p class="note" style="margin-top:0"><b>You're away</b> · as of ${House.wifiAsOf(showingCache.tools)}</p>` : "") + `
       <div class="head-card"><div class="grow"><b>${esc(h.model || "ASUS router")}</b><div class="status-line"><span class="dot ${h.update ? "bad" : "on"}"></span>${h.update ? `Update ready: ${esc(h.update)}` : `Firmware ${esc(h.firmware)}`}</div></div><button class="round-btn glass" id="wcHRefresh" aria-label="Check again">${svg("refresh")}</button></div>
       <div class="stats" style="margin-top:10px">
@@ -332,7 +324,7 @@
   }
   async function liveTick() {
     clearTimeout(liveTimer);
-    if (!liveOn || House.current !== "wifi" || House.tab !== "tools" || document.hidden) return;
+    if (!liveOn || House.current !== "wifi" || House.tab !== "devices" || document.hidden || !document.querySelector('details[data-fold="wifi.usage"][open]')) return;
     try {
       const r = await R("live", {}, true);
       if (livePrev) {
@@ -345,22 +337,11 @@
     liveTimer = setTimeout(liveTick, 2500);
   }
 
-  function paintSignal() {
-    const box = $("wcSignal");
-    if (!box) return;
-    const wl = (House.byId("wifi")?.list?.() || []).filter((d) => d.online && d.rssi).sort((a, b) => a.rssi - b.rssi);
-    if (!wl.length) { box.innerHTML = `<p class="note" style="margin:0">${signed() ? "Refresh the Devices tab to read each device's signal." : "Sign in to your router (Settings) to see each device's Wi-Fi signal."}</p>`; return; }
-    const bars = (r) => (r >= -55 ? 4 : r >= -67 ? 3 : r >= -75 ? 2 : 1);
-    const weak = wl.filter((d) => d.rssi < -70).length;
-    box.innerHTML = `<p class="note" style="margin-top:0">${weak ? `${weak} device${weak === 1 ? " has" : "s have"} a weak signal. Moving ${weak === 1 ? "it" : "them"} closer to the router (or the router higher up) helps.` : "Every device has a good signal."}</p>`
-      + wl.map((d) => `<div class="set-row"><span class="sig sig${bars(d.rssi)}"><i></i><i></i><i></i><i></i></span><div class="set-text"><b>${esc(d.label)}</b><span>${esc(d.band || "")} · ${d.rssi} dBm${d.rssi < -80 ? " · very weak" : d.rssi < -70 ? " · weak" : ""}</span></div></div>`).join("");
-  }
-
   /* ---- Events ---- */
   function mount() {
     document.addEventListener("click", async (e) => {
       const t = e.target;
-      if (!t.closest("#wcBody, #wcHealth, #wcUsage")) return;
+      if (!t.closest("#wcBody, [data-wc]")) return;
       let b;
       if ((b = t.closest("[data-fm]"))) { buzz(6); focusMin = +b.dataset.fm; paintControl(); return; }
       if ((b = t.closest("[data-keep]"))) { buzz(6); const k = new Set(keepList()); k.has(b.dataset.keep) ? k.delete(b.dataset.keep) : k.add(b.dataset.keep); store.setJson("wifi.keep", [...k]); paintControl(); return; }
@@ -450,15 +431,20 @@
       }
     });
     document.addEventListener("change", (e) => { if (e.target.id === "wcRbDay" || e.target.id === "wcRbTime") saveReboot(true); });
+    // Router and Data use load when opened.
+    document.addEventListener("toggle", (e) => {
+      const k = e.target.dataset?.fold;
+      if (k === "wifi.router" || k === "wifi.usage") { if (e.target.open) loadTools(); else if (k === "wifi.usage") { liveOn = false; clearTimeout(liveTimer); } }
+    }, true);
   }
 
   House.wifiControl = {
-    controlHtml, toolsHtml, mount,
+    controlHtml, toolsHtml, guestHtml, passwordHtml, keepHtml, mount,
     onShow(tab) {
-      if (tab === "control") loadControl();
-      if (tab === "tools") loadTools();
-      else { liveOn = false; clearTimeout(liveTimer); }
+      if (tab === "devices" || tab === "settings") loadControl();
+      if (tab === "devices" && toolsOpen()) loadTools();
+      if (tab !== "devices") { liveOn = false; clearTimeout(liveTimer); }
     },
-    repaint() { paintControl(); paintSignal(); },
+    repaint() { paintControl(); },
   };
 })();

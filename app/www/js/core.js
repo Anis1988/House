@@ -88,6 +88,7 @@ const ICON = {
   drop: '<path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/>',
   flame: '<path d="M12 22c4 0 7-3 7-7 0-5-5-7-5-12-3 2-4 5-4 7-1-1-2-2-2-4-2 2-3 5-3 9 0 4 3 7 7 7z"/>',
   snow: '<path d="M12 2v20M4.9 4.9l14.2 14.2M2 12h20M4.9 19.1L19.1 4.9"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   key: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
 };
@@ -152,6 +153,14 @@ const House = {
   side(def) { this.sides.push(def); },
   byId(id) { return this.sides.find((s) => s.id === id); },
   hidden() { return store.json("house.hidden", []); },
+  /* A foldable section: closed until opened, and it stays as you left it (kept per key).
+     `sub` is a short line under the title (give it an id with subId to update it later). */
+  fold(key, title, icon, body, { sub = "", subId = "", open = null } = {}) {
+    const isOpen = open ?? store.json("fold", {})[key] === true;
+    return `<details class="fold glass" data-fold="${esc(key)}"${isOpen ? " open" : ""}><summary>
+      <span class="ic-sm">${svg(icon)}</span><span class="fold-t"><b>${title}</b><span class="fold-s"${subId ? ` id="${subId}"` : ""}>${sub}</span></span>
+      <span class="fold-chev">${svg('<path d="M6 9l6 6 6-6"/>')}</span></summary><div class="fold-body">${body}</div></details>`;
+  },
 
   /** Sends the TV, screen, Nest and Wyze logins to the native side (waits a moment to batch changes). */
   syncCreds() {
@@ -174,6 +183,14 @@ const House = {
   page(sideId, tabId) { return document.querySelector(`.page[data-page="${sideId}:${tabId}"]`); },
 
   start() {
+    // Remember which foldable sections are open ("toggle" doesn't bubble, so listen while capturing).
+    document.addEventListener("toggle", (e) => {
+      const d = e.target;
+      if (!d.matches?.("details[data-fold]")) return;
+      const f = store.json("fold", {});
+      if (d.open) f[d.dataset.fold] = true; else delete f[d.dataset.fold];
+      store.setJson("fold", f);
+    }, true);
     // Each side gets one page per tab (Settings and Guide are built here).
     const pages = $("pages");
     for (const s of this.sides) {

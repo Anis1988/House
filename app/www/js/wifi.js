@@ -1,6 +1,7 @@
 // 📶 Wi-Fi: every device on the home network. Without a router sign-in it finds devices itself
 // (sweep + SSDP + mDNS + what the other sides know). Signed in to the ASUS router, it shows the
 // router's own list: names, MAC makers, online, Wi-Fi band and signal. Tabs: Devices · Settings.
+// Devices: status and who's home, then foldable controls and tools, then the device list.
 
 (() => {
   let devices = [];      // merged list
@@ -158,7 +159,7 @@
   }
   const ipNum = (ip) => (ip || "999.999.999.999").split(".").reduce((n, p) => n * 256 + (+p || 0), 0);
 
-  const GROUPS = [["Smart home", ["bulb", "tv", "screen", "cam", "thermo", "speaker", "car", "garage"]], ["Phones and computers", ["phone", "laptop"]], ["Network", ["router"]], ["Other", ["chip"]]];
+  const GROUPS = [["Smart home", ["bulb", "tv", "screen", "cam", "thermo", "speaker", "car", "garage"], "home"], ["Phones and computers", ["phone", "laptop"], "phone"], ["Network", ["router"], "router"], ["Other", ["chip"], "chip"]];
   function paint() {
     const f = filter.toLowerCase();
     const list = devices.filter((d) => !f || `${d.label} ${d.ip} ${d.maker} ${d.mac} ${d.hint}`.toLowerCase().includes(f));
@@ -166,20 +167,26 @@
     $("wfSub").innerHTML = away() && !busy
       ? `<span class="dot"></span>You're away · ${devices.length ? `last list from ${asOf(+store.get("wifi.lastAt", 0))}` : "nothing seen yet"}`
       : `<span class="dot ${on ? "on" : ""}"></span>` + (busy ? "Looking…" : devices.length ? `${on} online · ${router().pass ? "from your router" : "found by the app"}` : "Tap refresh to look");
-    $("wfList").innerHTML = GROUPS.map(([title, kinds]) => {
+    const bars = (r) => (r >= -55 ? 4 : r >= -67 ? 3 : r >= -75 ? 2 : 1);
+    $("wfList").innerHTML = GROUPS.map(([title, kinds, icon]) => {
       const ds = list.filter((d) => kinds.includes(d.kind));
       if (!ds.length) return "";
-      return `<div class="label">${title}<span class="cnt">${ds.length}</span></div><div class="devs">${ds.map((d) => `
+      const onl = ds.filter((d) => d.online).length, weak = ds.filter((d) => d.online && d.rssi && d.rssi < -70).length;
+      const rows = `<div class="devs">${ds.map((d) => `
         <button class="dev glass${d.online ? "" : " off"}" data-dev="${esc(d.mac || d.ip)}">
           <span class="ic">${svg(d.kind)}</span>
           <span class="t"><b>${esc(d.label)}</b><span>${esc([d.ip, d.maker && d.maker !== d.label ? d.maker : d.hint].filter(Boolean).join(" · "))}</span></span>
-          <span class="r">${d.mac && paused.has(d.mac.toLowerCase()) ? `<b style="color:var(--bad)">paused</b><br>` : ""}${d.online ? esc(d.band || "") + (d.rssi ? `<br>${d.rssi} dBm` : "") : "offline"}</span>
+          <span class="r">${d.mac && paused.has(d.mac.toLowerCase()) ? `<b style="color:var(--bad)">paused</b><br>` : ""}${!d.online ? "offline"
+            : d.rssi ? `<span class="sig sig${bars(d.rssi)}" title="${d.rssi} dBm"><i></i><i></i><i></i><i></i></span><br>${esc(d.band || "")}${d.rssi < -70 ? ` · <b style="color:${d.rssi < -80 ? "var(--bad)" : "#f59e0b"}">weak</b>` : ""}`
+            : esc(d.band || "")}</span>
         </button>`).join("")}</div>`;
+      return House.fold(`wifi.grp.${title}`, title, icon, rows, { sub: `${onl} online${ds.length > onl ? ` · ${ds.length - onl} off` : ""}${weak ? ` · ${weak} weak signal` : ""}`, open: f ? true : null });
     }).join("") || (busy ? "" : `<div class="card glass empty"><div class="big">${svg("wifi")}</div><b>No devices yet</b><p>Tap refresh. Signing in to your router (Settings) gives the full list with names.</p></div>`);
     const r = router();
     $("wfAddr").value = r.addr;
     $("wfUser").value = r.user || "admin";
     $("wfSigned").hidden = !r.pass;
+    $("wfRouterSub").textContent = r.pass ? "Signed in" : "Not signed in";
     paintHome();
     paintWatch();
     paintHistory();
@@ -197,7 +204,7 @@
     const open = out.find((o) => o.end == null);
     const week = log.outages.filter((o) => (o.end ?? Date.now()) > Date.now() - 7 * 864e5);
     const total = week.reduce((a, o) => a + ((o.end ?? Date.now()) - o.start), 0);
-    $("wfNet").innerHTML = !s.outages ? `<p class="note" style="margin:0">Turn on the internet outage log in Settings to keep track of outages.</p>`
+    $("wfNet").innerHTML = !s.outages ? `<p class="note" style="margin:0">Turn on the outage log above to keep track of outages.</p>`
       : `<div class="head-card"><div class="grow"><b>${open ? "Internet is down" : "Internet is up"}</b><div class="status-line"><span class="dot ${open ? "bad" : "on"}"></span>${open ? `Down since ${when(open.start)}` : week.length ? `${week.length} outage${week.length === 1 ? "" : "s"} this week · ${dur(total)} in all` : "No outages this week"}</div></div><button class="round-btn glass" id="wfNetCheck" aria-label="Check now">${svg("refresh")}</button></div>`
         + (out.length ? `<div style="margin-top:8px">${out.slice(0, 12).map((o) => `<div class="set-row"><div class="set-text"><b>${when(o.start)}</b><span>${o.end == null ? "Still down" : `${dur(o.end - o.start)}${o.unsure ? " (you left home during it)" : ""}`}</span></div></div>`).join("")}</div>` : "");
     $("wfNetCheck")?.addEventListener("click", async (e) => {
@@ -207,13 +214,13 @@
       await loadLog();
     });
     const devs = log.devices.slice().reverse();
-    if (!s.history) { $("wfLog").innerHTML = `<div class="card glass"><p class="note" style="margin:0">Turn on device history in Settings to see devices coming and going.</p></div>`; return; }
-    if (!devs.length) { $("wfLog").innerHTML = `<div class="card glass"><p class="note" style="margin:0">Nothing yet. Devices are checked about every 15 minutes.</p></div>`; return; }
+    if (!s.history) { $("wfLog").innerHTML = `<p class="note" style="margin:0">Turn on device history above to see devices coming and going.</p>`; return; }
+    if (!devs.length) { $("wfLog").innerHTML = `<p class="note" style="margin:0">Nothing yet. Devices are checked every few minutes.</p>`; return; }
     const own = names();
     const byDay = {};
     for (const e of devs.slice(0, 150)) (byDay[new Date(e.at).toDateString()] ||= []).push(e);
     $("wfLog").innerHTML = Object.entries(byDay).map(([day, es]) => `<div class="slide-lbl" style="margin:10px 0 6px">${new Date(day).toDateString() === new Date().toDateString() ? "Today" : new Date(day).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</div>
-      <div class="card glass" style="padding:4px 14px">${es.map((e) => `<div class="set-row"><span class="dot ${e.event === "joined" ? "on" : ""}"></span><div class="set-text"><b>${esc(own[e.key] || own[e.ip] || e.name || e.ip || e.key)}</b><span>${e.event === "joined" ? "Joined" : "Left"} · ${new Date(e.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${e.ip ? ` · ${esc(e.ip)}` : ""}</span></div></div>`).join("")}</div>`).join("");
+      <div class="glass" style="padding:4px 14px;border-radius:16px">${es.map((e) => `<div class="set-row"><span class="dot ${e.event === "joined" ? "on" : ""}"></span><div class="set-text"><b>${esc(own[e.key] || own[e.ip] || e.name || e.ip || e.key)}</b><span>${e.event === "joined" ? "Joined" : "Left"} · ${new Date(e.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${e.ip ? ` · ${esc(e.ip)}` : ""}</span></div></div>`).join("")}</div>`).join("");
   }
   async function loadLog() {
     try { log = await Net.getWifiLog(); } catch {}
@@ -306,6 +313,7 @@
       <div class="stat glass"><b>${last ? last.up : "—"}</b><span>Up Mbps</span></div>
       <div class="stat glass"><b>${last ? last.ping : "—"}</b><span>Ping ms</span></div>`;
     $("wfSpeedHist").innerHTML = hist.length > 1 ? hist.slice(1).map((h) => `<div class="set-row"><div class="set-text"><b>${h.down} ↓ · ${h.up} ↑ Mbps</b><span>${new Date(h.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ping ${h.ping} ms</span></div></div>`).join("") : "";
+    $("wfSpeedSub").textContent = last ? `${last.down} ↓ · ${last.up} ↑ Mbps · ${ago(last.at)} ago` : "Not run yet";
     $("wfSpeedWhen").textContent = last ? `Last test ${ago(last.at)} ago` : "Tests your internet through Cloudflare's speed test servers.";
   }
 
@@ -389,98 +397,85 @@
       { id: "devices", label: "Devices", icon: "wifi", html: `
         <div class="card glass"><div class="head-card"><div class="grow"><b>Your Wi-Fi</b><div class="status-line" id="wfSub"></div></div><button class="round-btn glass" id="wfRefresh" aria-label="Look again">${svg("refresh")}</button></div></div>
         <div class="card glass" id="wfHome" hidden></div>
-        <input class="field search" id="wfSearch" placeholder="Search by name, address or maker" aria-label="Search devices">
-        <div id="wfList"></div>` },
-      { id: "control", label: "Control", icon: '<path d="M12 2l8 3v6c0 5-3.5 9.3-8 11-4.5-1.7-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/>', html: House.wifiControl.controlHtml },
-      { id: "history", label: "History", icon: "clock", html: `
-        <div class="label">Internet</div>
-        <div class="card glass" id="wfNet"></div>
-        <div class="label">Devices coming and going</div>
-        <div id="wfLog"></div>` },
-      { id: "tools", label: "Tools", icon: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>', html: `
-        <div class="label">Internet speed</div>
-        <div class="card glass">
+        ${House.wifiControl.controlHtml}
+        <div class="sec-title">Tools</div>
+        ${House.fold("wifi.speed", "Speed test", "refresh", `
           <div class="stats" id="wfSpeed"></div>
           <p class="note" id="wfSpeedWhen"></p>
           <div class="list"><button class="primary full" id="wfSpeedGo">Run speed test</button></div>
-          <div id="wfSpeedHist" style="margin-top:8px"></div>
-        </div>
-        <div class="label">Guest Wi-Fi</div>
-        <div class="card glass">
-          <div class="qr-box" id="wfQr"></div>
-          <label class="fld">Wi-Fi name<input class="field" id="wfGuestSsid" autocomplete="off" placeholder="Your Wi-Fi name"></label>
-          <label class="fld">Wi-Fi password<input class="field" id="wfGuestPass" type="password" autocomplete="off"></label>
-          <label class="fld">Security<select class="field" id="wfGuestSec"><option value="WPA">WPA / WPA2 / WPA3</option><option value="WEP">WEP</option><option value="none">No password</option></select></label>
-          <div class="list"><button class="ghost center" id="wfGuestSave">Make the code</button></div>
-          <p class="note">Kept on this phone only. Use your guest network's name and password if you have one.</p>
-        </div>` + House.wifiControl.toolsHtml },
+          <div id="wfSpeedHist" style="margin-top:8px"></div>`, { subId: "wfSpeedSub" })}
+        ${House.wifiControl.toolsHtml}
+        <div class="sec-title">Devices</div>
+        <input class="field search" id="wfSearch" placeholder="Search by name, address or maker" aria-label="Search devices">
+        <div id="wfList"></div>` },
       { id: "settings", label: "Settings", icon: "gear" },
     ],
     settingsHtml: `
-      <div class="label">History</div>
-      <div class="card glass">
-        <div class="set-row"><div class="set-text"><b>Device history</b><span>Keeps when each device joined and left (checked about every 15 min). Most accurate with the router signed in.</span></div><button class="tgl" id="wfHistOn" aria-label="Device history"><i></i></button></div>
-        <div class="set-row"><div class="set-text"><b>Internet outage log</b><span>Checks the internet about every 5 min while you're on the home Wi-Fi.</span></div><button class="tgl" id="wfOutOn" aria-label="Internet outage log"><i></i></button></div>
-        <div class="list"><button class="ghost center" id="wfLogClear">Clear history</button></div>
-      </div>
-      <div class="label">Alerts</div>
-      <div class="card glass">
-        <div class="set-row"><div class="set-text"><b>New device alert</b><span>A notification when a device joins your Wi-Fi for the first time. Checked about every 15 min; it learns your devices for the first hour. Most reliable with the router signed in.</span></div><button class="tgl" id="wfAlerts" aria-label="New device alert"><i></i></button></div>
-        <p class="note" id="wfNotifNote" hidden>Notifications are off for House. Turn them on in your phone's Settings → Apps → House → Notifications.</p>
-      </div>
-      <div class="label">Who's home</div>
-      <div class="card glass">
+      ${House.fold("wifi.guest", "Guest Wi-Fi", "key", `${House.wifiControl.guestHtml}
+        <div class="sec-title" style="margin-top:14px">QR code for guests</div>
+        <div class="qr-box" id="wfQr"></div>
+        <label class="fld">Wi-Fi name<input class="field" id="wfGuestSsid" autocomplete="off" placeholder="Your Wi-Fi name"></label>
+        <label class="fld">Wi-Fi password<input class="field" id="wfGuestPass" type="password" autocomplete="off"></label>
+        <label class="fld">Security<select class="field" id="wfGuestSec"><option value="WPA">WPA / WPA2 / WPA3</option><option value="WEP">WEP</option><option value="none">No password</option></select></label>
+        <div class="list"><button class="ghost center" id="wfGuestSave">Make the code</button></div>
+        <p class="note">Kept on this phone only.</p>`, { sub: "Turn on, password, QR code" })}
+      ${House.fold("wifi.password", "Wi-Fi password", "key", `${House.wifiControl.passwordHtml}`, { sub: "Change it for every device" })}
+      ${House.fold("wifi.keep", "Pause everyone keeps on", "power", `${House.wifiControl.keepHtml}`, { sub: "Devices that stay online" })}
+      ${House.fold("wifi.alerts", "New device alert", "bell", `
+        <div class="set-row"><div class="set-text"><b>New device alert</b><span>A notification when a device joins your Wi-Fi for the first time. It learns your devices first. Most reliable with the router signed in.</span></div><button class="tgl" id="wfAlerts" aria-label="New device alert"><i></i></button></div>
+        <p class="note" id="wfNotifNote" hidden>Notifications are off for House. Turn them on in your phone's Settings → Apps → House → Notifications.</p>`, { sub: "Notify when something new joins" })}
+      ${House.fold("wifi.home", "Who's home", "phone", `
         <div id="wfPeople"></div>
         <div id="wfThisPhone">
           <label class="fld">Add this phone (whose is it?)<input class="field" id="wfMeName" placeholder="Anis"></label>
           <div class="list"><button class="primary full" id="wfMeAdd">Add this phone</button></div>
-          <p class="note">This phone knows the moment it leaves or joins your Wi-Fi, so it updates right away (away after 2 minutes off the Wi-Fi). Do this while connected to your home Wi-Fi.</p>
+          <p class="note">This phone knows the moment it leaves or joins your Wi-Fi (away after 2 minutes off it). Do this on your home Wi-Fi.</p>
         </div>
         <label class="fld">Check every<select class="field" id="wfEvery"></select></label>
         <p class="note" id="wfEveryNote"></p>
         <label class="fld">When someone gets home, run<select class="field" id="wfArrive"></select></label>
         <label class="fld">When everyone has left, run<select class="field" id="wfLeave"></select></label>
         <p class="note err" id="wfNoCloud" hidden>Once your phone is off the home Wi-Fi it can't reach the bulbs. Add a LIFX cloud token in <b>Lights → Settings</b>, or the lights won't change when you leave.</p>
-        <p class="note">With the router signed in, someone counts as gone as soon as their phone is off the Wi-Fi. Without it, after their phone is missing twice in a row. Opening this side checks right away. Phones with “private Wi-Fi address” turned off for this network are recognised more reliably. Lights can only be reached from the home Wi-Fi: for a leave scene, add a LIFX cloud token in Lights → Settings.</p>
-      </div>
-      <div class="label">Lights react</div>
-      <div class="card glass">
+        <p class="note">With the router signed in, someone counts as gone as soon as their phone is off the Wi-Fi; without it, after two misses. Phones with “private Wi-Fi address” off for this network are recognised more reliably.</p>`, { sub: "People, checks, arrive and leave scenes" })}
+      ${House.fold("wifi.react", "Lights react", "bulb", `
         <label class="fld" style="margin-top:0">Light that blinks<select class="field" id="wfFlashLight"></select></label>
         <div class="set-row"><div class="set-text"><b>When the internet goes down</b><span>Checked about every 5 min while you're home.</span></div><button class="tgl" id="wfFlashOut" aria-label="Blink when the internet goes down"><i></i></button></div>
-        <div class="set-row"><div class="set-text"><b>When a new device joins</b><span>Checked about every 15 min.</span></div><button class="tgl" id="wfFlashNew" aria-label="Blink when a new device joins"><i></i></button></div>
+        <div class="set-row"><div class="set-text"><b>When a new device joins</b></div><button class="tgl" id="wfFlashNew" aria-label="Blink when a new device joins"><i></i></button></div>
         <div class="list"><button class="ghost center" id="wfFlashTest">Test it</button></div>
-        <p class="note">The light blinks three times, then goes back to how it was.</p>
-      </div>
-      <div class="label">Router (ASUS)</div>
-      <div class="card glass">
-        <p class="note" style="margin-top:0">Optional. With your router's sign-in, the list shows every device with its real name, maker, Wi-Fi band and signal. Without it, the app finds devices itself.</p>
+        <p class="note">The light blinks three times, then goes back to how it was.</p>`, { sub: "A light blinks on Wi-Fi events" })}
+      ${House.fold("wifi.router", "Router sign-in (ASUS)", "router", `
+        <p class="note" style="margin-top:0">Optional. With your router's sign-in you get real names, signal, and all the controls. Without it, the app finds devices itself.</p>
         <label class="fld">Router address<input class="field" id="wfAddr" inputmode="url" placeholder="192.168.50.1 (found by itself)"></label>
         <label class="fld">Username<input class="field" id="wfUser" autocomplete="username" value="admin"></label>
         <label class="fld">Password<input class="field" id="wfPass" type="password" autocomplete="current-password"></label>
         <div class="list"><button class="primary full" id="wfSave">Sign in to the router</button></div>
         <div id="wfSigned" hidden><p class="note">${svg("check", 'style="width:16px;height:16px;vertical-align:-3px;color:var(--good)"')} Router sign-in saved on this phone.</p><div class="list"><button class="ghost center danger" id="wfOut">Forget router sign-in</button></div></div>
-        <p class="note">Several wrong passwords make the router pause sign-ins for a few minutes.</p>
-      </div>
-      <div class="label">Network</div>
-      <div class="card glass">
+        <p class="note">Several wrong passwords make the router pause sign-ins for a few minutes.</p>`, { subId: "wfRouterSub" })}
+      ${House.fold("wifi.network", "Network and names", "wifi", `
         <label class="fld" style="margin-top:0">Network to scan<input class="field" id="wfRange" inputmode="decimal" placeholder="Found by itself (like 192.168.50)"></label>
         <p class="note">Leave empty to scan the network your phone is on.</p>
-      </div>
-      <div class="label">Names</div>
-      <div class="card glass"><button class="ghost center" id="wfNames">Clear the names I gave devices</button></div>`,
+        <div class="list"><button class="ghost center" id="wfNames">Clear the names I gave devices</button></div>`)}
+      ${House.fold("wifi.history", "History", "clock", `
+        <div class="set-row"><div class="set-text"><b>Device history</b><span>When each device joined and left. Most accurate with the router signed in.</span></div><button class="tgl" id="wfHistOn" aria-label="Device history"><i></i></button></div>
+        <div class="set-row"><div class="set-text"><b>Internet outage log</b><span>Checks the internet about every 5 min while you're home.</span></div><button class="tgl" id="wfOutOn" aria-label="Internet outage log"><i></i></button></div>
+        <div class="sec-title">Internet</div>
+        <div id="wfNet"></div>
+        <div class="sec-title">Devices coming and going</div>
+        <div id="wfLog"></div>
+        <div class="list"><button class="ghost center" id="wfLogClear">Clear history</button></div>`, { sub: "Outages and devices coming and going" })}`,
     guide: [
       ["wifi", "Your devices", "Everything connected to your Wi-Fi, grouped into smart home, phones and computers. Faded ones were seen before but aren't on now."],
       ["router", "Full list", "Sign in to your ASUS router in Settings for real names, makers, Wi-Fi band and signal strength. Your password stays on this phone."],
       ["chip", "Name a device", "Tap any device to give it your own name. Devices the app controls open their own page from there."],
       ["bell", "New device alert", "Settings → New device alert sends a notification when something joins your Wi-Fi for the first time."],
       ["phone", "Who's home", "Tap someone's phone → “This is a person's phone”. The Devices tab then shows who's home, and Settings can run a scene when someone arrives or everyone leaves."],
-      ["refresh", "Speed test", "Tools → Run speed test measures your internet's download, upload and ping, and keeps the last results."],
-      ["key", "Guest Wi-Fi", "Tools → type your Wi-Fi name and password once; guests point their camera at the code to join. With the router signed in, Control → Guest Wi-Fi turns the guest network on for 1 h, 2 h, a day or always."],
-      ["phone", "Profiles", "Control → New profile: put a person's devices together. Pause, Focus time, bedtime and priority then work on all of them at once."],
-      ["clock", "Focus time and pause everyone", "Control → Focus time pauses someone's internet for 30 min to 2 h and brings it back by itself. Pause everyone pauses every device except the ones you keep on."],
-      ["moon", "Internet bedtime", "Control → Add a bedtime: internet off at night on the days you pick. The router keeps it, so it works with your phone away."],
-      ["star", "Priority, password, block", "Control → Device priority gives a device bandwidth first for a while (router QoS on). Change the Wi-Fi password there too. A new device alert has a Block button."],
-      ["router", "Router health and data use", "Tools → Router shows CPU, memory, temperature and updates, and restarts it now or weekly. Data use shows who used the most today or this week, or live."],
+      ["refresh", "Speed test", "Devices → Speed test measures your internet's download, upload and ping, and keeps the last results."],
+      ["key", "Guest Wi-Fi", "Settings → Guest Wi-Fi: type your Wi-Fi name and password once; guests point their camera at the code to join. With the router signed in, the same section turns the guest network on for 1 h, 2 h, a day or always."],
+      ["phone", "Profiles", "Devices → Profiles → New profile: put a person's devices together. Pause, Focus time, bedtime and priority then work on all of them at once."],
+      ["clock", "Focus time and pause everyone", "Devices → Focus time pauses someone's internet for 30 min to 2 h and brings it back by itself. Pause everyone pauses every device except the ones you keep on."],
+      ["moon", "Internet bedtime", "Devices → Add a bedtime: internet off at night on the days you pick. The router keeps it, so it works with your phone away."],
+      ["star", "Priority, password, block", "Devices → Device priority gives a device bandwidth first for a while (router QoS on). Change the Wi-Fi password in Settings → Wi-Fi password. A new device alert has a Block button."],
+      ["router", "Router health and data use", "Devices → Router shows CPU, memory, temperature and updates, and restarts it now or weekly. Data use shows who used the most today or this week, or live."],
       ["bulb", "Lights react", "Settings → Lights react: a light blinks when the internet goes down or a new device joins."],
     ],
     mount() {
@@ -548,9 +543,9 @@
     list: () => devices,
     onShow(tab) {
       House.wifiControl.onShow(tab);
-      if (tab === "tools") paintGuest();
+      if (tab === "settings") { paintGuest(); loadLog(); }
       if (tab === "devices" && !busy && !devices.length) load(); else paint();
-      if (tab === "history") loadLog();
+
       if (tab === "devices" && router().pass) loadPaused().then(paint);
       if (tab === "devices" && people().length) {
         // This phone first (instant), then everyone else through a full check, so leaving shows right away.

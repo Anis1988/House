@@ -506,3 +506,19 @@ nav button.on svg { color: var(--at); }
 .ov-scene .ic svg { width: 19px; height: 19px; }
 .ov-scene b { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ov-scene:active { transform: scale(.96); }
+
+/* Foldable sections */
+.fold { border-radius: 22px; margin-bottom: 10px; overflow: hidden; flex-shrink: 0; }
+.fold > summary { list-style: none; display: flex; align-items: center; gap: 12px; padding: 13px 14px; cursor: pointer; user-select: none; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fold-t b { font-size: 15px; }
+.fold-s { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fold-s:empty { display: none; }
+.fold-chev { color: var(--muted); display: grid; transition: transform .2s; }
+.fold-chev svg { width: 18px; height: 18px; }
+.fold[open] > summary .fold-chev { transform: rotate(180deg); }
+.fold-body { padding: 0 14px 14px; }
+.fold-body > .note:first-child { margin-top: 0; }
+.fold .devs { margin: 0; }
+.sec-title { font-size: 11.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); margin: 18px 0 8px 4px; font-weight: 700; }
