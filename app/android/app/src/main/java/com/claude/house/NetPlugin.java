@@ -696,6 +696,31 @@ public class NetPlugin extends Plugin {
         });
     }
 
+    // ---- PC: turn on at a set time ----
+
+    /** → { on, minutes, days, mac, broadcast, name, next } */
+    @PluginMethod
+    public void getPcWake(PluginCall call) {
+        try {
+            JSObject r = new JSObject(PcLink.wakeSettings(getContext()).toString());
+            r.put("next", PcLink.next(getContext()));
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void setPcWake(PluginCall call) {
+        try {
+            org.json.JSONObject s = new org.json.JSONObject(call.getData().toString());
+            PcLink.saveWake(getContext(), s);
+            getPcWake(call);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
     // ---- Home overview ----
 
     /**

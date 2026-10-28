@@ -529,3 +529,12 @@ nav button.on svg { color: var(--at); }
 .pc-btns button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; }
 .pc-btns svg, .list .primary svg { width: 17px; height: 17px; vertical-align: -3px; }
 .small-btn { min-height: 36px; font-size: 13px; }
+
+/* PC tab */
+.pc-dot { width: 14px; height: 14px; border-radius: 50%; flex: none; background: var(--muted); opacity: .6; }
+.pc-dot.on { background: var(--good); opacity: 1; box-shadow: 0 0 12px var(--good); }
+.pc-media { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pc-media button { min-height: 46px; font-size: 16px; }
+.pc-media svg { width: 18px; height: 18px; }
+.pc-shot { display: block; width: 100%; border-radius: 12px; cursor: zoom-in; margin-bottom: 4px; }
+#pcMsg { resize: vertical; min-height: 64px; }

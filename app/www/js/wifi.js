@@ -404,7 +404,6 @@
       { id: "devices", label: "Devices", icon: "wifi", html: `
         <div class="card glass"><div class="head-card"><div class="grow"><b>Your Wi-Fi</b><div class="status-line" id="wfSub"></div></div><button class="round-btn glass" id="wfRefresh" aria-label="Look again">${svg("refresh")}</button></div></div>
         <div class="card glass" id="wfHome" hidden></div>
-        ${House.pc.foldHtml}
         ${House.wifiControl.controlHtml}
         <div class="sec-title">Tools</div>
         ${House.fold("wifi.speed", "Speed test", "refresh", `
@@ -416,6 +415,7 @@
         <div class="sec-title">Devices</div>
         <input class="field search" id="wfSearch" placeholder="Search by name, address or maker" aria-label="Search devices">
         <div id="wfList"></div>` },
+      { id: "pc", label: "PC", icon: "laptop", html: House.pc.html },
       { id: "settings", label: "Settings", icon: "gear" },
     ],
     settingsHtml: `
@@ -483,7 +483,7 @@
       ["clock", "Focus time and pause everyone", "Devices → Focus time pauses someone's internet for 30 min to 2 h and brings it back by itself. Pause everyone pauses every device except the ones you keep on."],
       ["moon", "Internet bedtime", "Devices → Add a bedtime: internet off at night on the days you pick. The router keeps it, so it works with your phone away."],
       ["star", "Priority, password, block", "Devices → Device priority gives a device bandwidth first for a while (router QoS on). Change the Wi-Fi password in Settings → Wi-Fi password. A new device alert has a Block button."],
-      ["laptop", "Your PC", "Install the House PC helper on a Windows PC, then tap that PC in Devices → Pair (say Yes on the PC). Shut it down, restart, sleep or lock it from here, and turn it on over the network when it's wired."],
+      ["laptop", "Your PC", "Install the House PC helper on a Windows PC (pc-helper in the House repo), then PC tab → Find PCs → Pair, and say Yes on the PC. Power, volume, programs, a message, a screenshot, health, a nightly shutdown and turn on at a time."],
       ["router", "Router health and data use", "Devices → Router shows CPU, memory, temperature and updates, and restarts it now or weekly. Data use shows who used the most today or this week, or live."],
       ["bulb", "Lights react", "Settings → Lights react: a light blinks when the internet goes down or a new device joins."],
     ],
@@ -552,7 +552,7 @@
     list: () => devices,
     onShow(tab) {
       House.wifiControl.onShow(tab);
-      if (tab === "devices") House.pc.refresh();
+      if (tab === "pc") House.pc.onShow();
       if (tab === "settings") { paintGuest(); loadLog(); }
       if (tab === "devices" && !busy && !devices.length) load(); else paint();
 

@@ -33,7 +33,7 @@ Any side can be hidden in Settings → Devices in the app. Logins and keys stay 
 
 ## Your PC
 
-`pc-helper/` is a small helper for a Windows PC so House can shut it down, restart, sleep or lock it over the home network (and turn it on with Wake-on-LAN when wired). Install with `powershell -ExecutionPolicy Bypass -File pc-helperinstall.ps1` (needs Node.js); it starts at sign-in with no window. In House: Wi-Fi → tap the PC → Pair, and say Yes on the PC.
+`pc-helper/` is a small helper for a Windows PC (needs Node.js). Install or update with `powershell -ExecutionPolicy Bypass -File pc-helperinstall.ps1`; it starts at sign-in with no window and only answers the home network. In House: Wi-Fi → **PC** tab → Find PCs → Pair (say Yes on the PC). The tab has power (sleep, lock, restart, shut down, turn on with Wake-on-LAN), volume and media, open programs (close them), a message on screen, a screenshot, health (CPU, memory, disks), a nightly shutdown at a time you pick (kept by the PC: 2-minute warning with Cancel, skipped if the PC was used recently) and turn on at a set time. There is a PC widget and a Quick Settings tile (on: sleep, off: turn on).
 
 ## Planned next
 

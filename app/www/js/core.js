@@ -11,7 +11,7 @@ const store = {
   set(k, v) {
     try { v === null || v === undefined ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {}
     // Device logins changed: hand them to the native side, which runs scene timers with the app closed.
-    if (/^(lg|ss|nest|wyze|lifx)\.|^wifi\.(router|range)$/.test(k)) House?.syncCreds?.();
+    if (/^(lg|ss|nest|wyze|lifx)\.|^wifi\.(router|range)$|^pc\.list$/.test(k)) House?.syncCreds?.();
   },
   json(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   setJson(k, v) { this.set(k, JSON.stringify(v)); },
@@ -138,6 +138,8 @@ const Net = plugin("Net", {
   getAuto: async () => ({ settings: store.json("mock.auto", {}), dark: true }),
   setAuto: async ({ settings }) => (store.setJson("mock.auto", settings), { settings, dark: true }),
   tvState: async () => ({ on: false }),
+  getPcWake: async () => store.json("mock.pcwake", { on: false, minutes: 420, days: [] }),
+  setPcWake: async (w) => (store.setJson("mock.pcwake", w), w),
   homeStatus: async () => ({ people: [{ key: "this-phone", name: "Anis", home: true, since: Date.now() - 7200e3, seenAt: Date.now() }, { key: "aa", name: "Roza", home: false, since: Date.now() - 1800e3, seenAt: Date.now() - 1800e3 }],
     atHome: true, netUp: true, lastSpeed: { down: 512.3, up: 41.7, ping: 12, at: Date.now() - 3600e3 },
     nest: { temp: 21.4, hum: 41, mode: "HEAT", eco: "OFF", heat: 21, scale: "CELSIUS", hvac: "HEATING", at: Date.now() }, ring: { at: Date.now() - 5400e3, kind: "ring", device: "Front door", image: null } }),
@@ -176,6 +178,7 @@ const House = {
         routerAddr: router.addr || "", routerUser: router.user || "admin", routerPass: router.pass || "",
         lifxToken: store.get("lifx.token", ""),
         scanRange: store.get("wifi.range", ""),
+        pcList: store.json("pc.list", []),
       } }).catch(() => {});
     }, 400);
   },

@@ -7,6 +7,15 @@ $dir = Join-Path $env:USERPROFILE "HousePC"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 Copy-Item -Force (Join-Path $PSScriptRoot "house-pc.js") $dir
 
+# The screenshot program, built with the C# compiler that comes with Windows (.NET Framework 4).
+$csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+$shot = Join-Path $dir "house-shot.exe"
+if (Test-Path $csc) {
+    Get-Process house-shot -ErrorAction SilentlyContinue | Stop-Process -Force
+    & $csc /nologo /target:exe /optimize /out:$shot /r:System.Drawing.dll /r:System.Windows.Forms.dll (Join-Path $PSScriptRoot "house-shot.cs") | Out-Null
+    if (-not (Test-Path $shot)) { Write-Output "Screenshot program not built: screenshots won't be available." }
+}
+
 $node = (Get-Command node.exe -ErrorAction Stop).Source
 $startup = [Environment]::GetFolderPath("Startup")
 $vbs = Join-Path $startup "House PC helper.vbs"

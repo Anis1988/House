@@ -30,6 +30,7 @@ public class LightsPlugin extends Plugin {
         SceneOffs.schedule(getContext());
         RouterControl.schedule(getContext());
         HomeAuto.schedule(getContext());
+        PcLink.schedule(getContext());
         Shortcuts.update(getContext());
         Presence.register(getContext());
         NestWatch.schedule(getContext());

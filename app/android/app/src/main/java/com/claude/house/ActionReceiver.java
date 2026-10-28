@@ -92,6 +92,17 @@ public class ActionReceiver extends BroadcastReceiver {
             }).start();
             return;
         }
+        if (PcLink.ACTION_WAKE.equals(intent.getAction())) {
+            PendingResult result = goAsync();
+            new Thread(() -> {
+                try {
+                    PcLink.fireWake(app);
+                } finally {
+                    result.finish();
+                }
+            }).start();
+            return;
+        }
         if (HomeAuto.ACTION_TV.equals(intent.getAction())) {
             PendingResult result = goAsync();
             new Thread(() -> {

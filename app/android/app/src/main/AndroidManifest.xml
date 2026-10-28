@@ -78,7 +78,15 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_door_info" />
         </receiver>
 
+        <receiver android:name=".PcWidget" android:exported="true" android:label="PC">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_pc_info" />
+        </receiver>
+
         <!-- Quick Settings tiles -->
+        <service android:name=".PcTile" android:exported="true" android:label="PC" android:icon="@drawable/wl_pc" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
         <service android:name=".LightsTile" android:exported="true" android:label="Lights" android:icon="@drawable/wl_bulb" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>

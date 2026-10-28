@@ -94,6 +94,23 @@ final class Widgets {
                 case "bedtime":
                     Bedtime.set(ctx, !Bedtime.enabled(ctx), Bedtime.minutes(ctx));
                     break;
+                case "pc":
+                    // Sleep / lock / shut down / wake / refresh, then show the result.
+                    try {
+                        if ("wake".equals(arg)) PcLink.wake(ctx);
+                        else if (!"refresh".equals(arg)) PcLink.cmd(ctx, arg);
+                        if ("refresh".equals(arg) || "lock".equals(arg)) PcLink.refresh(ctx);
+                        String done = "wake".equals(arg) ? "Waking the PC… give it a minute" : "sleep".equals(arg) ? "Putting the PC to sleep"
+                            : "shutdown".equals(arg) ? "The PC shuts down in 10 seconds" : "lock".equals(arg) ? "PC locked" : null;
+                        if (done != null) new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                            android.widget.Toast.makeText(ctx, done, android.widget.Toast.LENGTH_SHORT).show());
+                    } catch (Exception e) {
+                        String why = e.getMessage() == null ? "didn't answer" : e.getMessage();
+                        new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                            android.widget.Toast.makeText(ctx, why, android.widget.Toast.LENGTH_SHORT).show());
+                    }
+                    redraw(ctx, PcWidget.class);
+                    return;
                 case "nest":
                     // Warmer / cooler, or refresh. The Nest widget is redrawn by NestWatch.
                     try {
@@ -154,6 +171,7 @@ final class Widgets {
         else if (cls == BrightWidget.class) v = bright(ctx);
         else if (cls == WifiWidget.class) v = wifi(ctx, h);
         else if (cls == NestWidget.class) v = nest(ctx, h);
+        else if (cls == PcWidget.class) v = pcWidget(ctx);
         else if (cls == DoorbellWidget.class) v = doorbell(ctx, w, h);
         else v = away(ctx);
         mgr.updateAppWidget(id, v);
@@ -173,6 +191,7 @@ final class Widgets {
             case "away": return away(ctx);
             case "wifi": return wifi(ctx, h);
             case "nest": return nest(ctx, h);
+            case "pc": return pcWidget(ctx);
             case "doorbell": return doorbell(ctx, w, h);
             default: return toggle(ctx);
         }
@@ -186,6 +205,35 @@ final class Widgets {
     private static String ago(long at) {
         long m = (System.currentTimeMillis() - at) / 60000;
         return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? (m / 60) + " h ago" : (m / 1440) + " d ago";
+    }
+
+    /** The PC: green dot when on; Sleep, Lock, Shut down, or Turn on when off. Asks the PC again when the last answer is old. */
+    private static RemoteViews pcWidget(Context ctx) {
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_pc);
+        JSONObject pc = PcLink.pc(ctx), s = PcLink.state(ctx);
+        v.setOnClickPendingIntent(R.id.wp_head, pc == null ? open(ctx) : tap(ctx, "pc", "refresh"));
+        if (pc == null) {
+            v.setTextViewText(R.id.wp_name, "PC");
+            v.setTextViewText(R.id.wp_state, "Pair it in the app");
+            v.setViewVisibility(R.id.wp_on, View.GONE);
+            v.setViewVisibility(R.id.wp_wake, View.GONE);
+            return v;
+        }
+        boolean on = s.optBoolean("online");
+        v.setTextViewText(R.id.wp_name, pc.optString("name", "PC"));
+        v.setImageViewResource(R.id.wp_dot, on ? R.drawable.wl_dot_on : R.drawable.wl_dot_off);
+        v.setTextViewText(R.id.wp_state, (on ? "On" : "Off") + (s.has("at") ? " · " + shortAgo(s.optLong("at")) : ""));
+        v.setViewVisibility(R.id.wp_on, on ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.wp_wake, on ? View.GONE : View.VISIBLE);
+        v.setOnClickPendingIntent(R.id.wp_sleep, tap(ctx, "pc", "sleep"));
+        v.setOnClickPendingIntent(R.id.wp_lock, tap(ctx, "pc", "lock"));
+        v.setOnClickPendingIntent(R.id.wp_off, tap(ctx, "pc", "shutdown"));
+        v.setOnClickPendingIntent(R.id.wp_turnon, tap(ctx, "pc", "wake"));
+        if (System.currentTimeMillis() - s.optLong("at") > 5 * 60_000L) {
+            Context app = ctx.getApplicationContext();
+            ActionReceiver.worker.execute(() -> { PcLink.refresh(app); redraw(app, PcWidget.class); });
+        }
+        return v;
     }
 
     /** Nest: inside temperature, target, and warmer / cooler buttons. */

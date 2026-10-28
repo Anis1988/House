@@ -15,6 +15,7 @@ public class BootReceiver extends BroadcastReceiver {
         SceneOffs.schedule(ctx);
         RouterControl.schedule(ctx);
         HomeAuto.schedule(ctx);
+        PcLink.schedule(ctx);
         Shortcuts.update(ctx);
         WifiWatch.schedule(ctx);
         Presence.register(ctx);
