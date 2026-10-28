@@ -11,7 +11,7 @@ const store = {
   set(k, v) {
     try { v === null || v === undefined ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {}
     // Device logins changed: hand them to the native side, which runs scene timers with the app closed.
-    if (/^(lg|ss|nest|wyze|lifx)\.|^wifi\.(router|range)$|^pc\.list$/.test(k)) House?.syncCreds?.();
+    if (/^(lg|ss|nest|wyze|lifx)\.|^wifi\.(router|range)$|^pc\.list$|^wifi\.last$/.test(k)) House?.syncCreds?.();
   },
   json(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   setJson(k, v) { this.set(k, JSON.stringify(v)); },
@@ -179,6 +179,8 @@ const House = {
         lifxToken: store.get("lifx.token", ""),
         scanRange: store.get("wifi.range", ""),
         pcList: store.json("pc.list", []),
+        // Names for the device picker of the Priority widget.
+        wifiDevices: store.json("wifi.last", []).filter((d) => d.mac).map((d) => ({ mac: d.mac.toLowerCase(), label: d.label, kind: d.kind, online: !!d.online })),
       } }).catch(() => {});
     }, 400);
   },

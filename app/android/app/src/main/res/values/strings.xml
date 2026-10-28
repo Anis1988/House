@@ -15,4 +15,5 @@
     <string name="wl_desc_nest">Inside temperature, target and warmer / cooler</string>
     <string name="wl_desc_door">The last doorbell ring, with its picture</string>
     <string name="wl_desc_pc">Your PC: on or off, sleep, lock, shut down, turn on</string>
+    <string name="wl_desc_prio">One device: each tap gives it Wi-Fi priority, or ends it</string>
 </resources>

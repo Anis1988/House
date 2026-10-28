@@ -111,6 +111,26 @@ final class Widgets {
                     }
                     redraw(ctx, PcWidget.class);
                     return;
+                case "prio": {
+                    // Priority on for the chosen time, or off if it's on.
+                    JSONObject cfg = prioCfg(ctx, Integer.parseInt(arg));
+                    if (cfg == null) return;
+                    String mac = cfg.optString("mac"), name = cfg.optString("name", "Device");
+                    boolean on = RouterControl.priorityOf(ctx, mac).optBoolean("on");
+                    String msg;
+                    try {
+                        RouterControl.priority(ctx, mac, name, !on, cfg.optInt("minutes"));
+                        int m = cfg.optInt("minutes");
+                        msg = on ? name + ": priority off" : name + ": priority on" + (m > 0 ? " for " + (m >= 60 ? m / 60 + " h" : m + " min") : "");
+                    } catch (Exception e) {
+                        msg = e.getMessage() == null ? "The router didn't answer" : e.getMessage();
+                    }
+                    String toast = msg;
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                        android.widget.Toast.makeText(ctx, toast, android.widget.Toast.LENGTH_LONG).show());
+                    redraw(ctx, PriorityWidget.class);
+                    return;
+                }
                 case "nest":
                     // Warmer / cooler, or refresh. The Nest widget is redrawn by NestWatch.
                     try {
@@ -154,6 +174,7 @@ final class Widgets {
     static void redrawWifi(Context ctx) { redraw(ctx, WifiWidget.class); }
     static void redrawNest(Context ctx) { redraw(ctx, NestWidget.class); }
     static void redrawDoorbell(Context ctx) { redraw(ctx, DoorbellWidget.class); }
+    static void redrawPrio(Context ctx) { redraw(ctx, PriorityWidget.class); }
 
     private static void redraw(Context ctx, Class<?> cls) {
         AppWidgetManager mgr = AppWidgetManager.getInstance(ctx);
@@ -172,6 +193,7 @@ final class Widgets {
         else if (cls == WifiWidget.class) v = wifi(ctx, h);
         else if (cls == NestWidget.class) v = nest(ctx, h);
         else if (cls == PcWidget.class) v = pcWidget(ctx);
+        else if (cls == PriorityWidget.class) v = prio(ctx, id);
         else if (cls == DoorbellWidget.class) v = doorbell(ctx, w, h);
         else v = away(ctx);
         mgr.updateAppWidget(id, v);
@@ -192,6 +214,7 @@ final class Widgets {
             case "wifi": return wifi(ctx, h);
             case "nest": return nest(ctx, h);
             case "pc": return pcWidget(ctx);
+            case "prio": return prio(ctx, -1);
             case "doorbell": return doorbell(ctx, w, h);
             default: return toggle(ctx);
         }
@@ -205,6 +228,43 @@ final class Widgets {
     private static String ago(long at) {
         long m = (System.currentTimeMillis() - at) / 60000;
         return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? (m / 60) + " h ago" : (m / 1440) + " d ago";
+    }
+
+    static JSONObject prioCfg(Context ctx, int widgetId) {
+        try {
+            String s = ctx.getSharedPreferences(Lifx.PREFS, Context.MODE_PRIVATE).getString("wprio_" + widgetId, null);
+            return s == null ? null : new JSONObject(s);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Priority (1x1): the device's name, lit while it has priority, with the time left. */
+    private static RemoteViews prio(Context ctx, int widgetId) {
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_one);
+        v.setImageViewResource(R.id.wl_icon, R.drawable.wl_star);
+        JSONObject cfg = prioCfg(ctx, widgetId);
+        if (cfg == null) {
+            v.setTextViewText(R.id.wl_name, "Priority");
+            v.setTextViewText(R.id.wl_state, "Tap to pick");
+            v.setImageViewResource(R.id.wl_badge, R.drawable.wl_badge_off);
+            Intent pick = new Intent(ctx, PriorityConfig.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
+            v.setOnClickPendingIntent(R.id.wl_root, PendingIntent.getActivity(ctx, 400 + widgetId, pick, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+            return v;
+        }
+        JSONObject st = RouterControl.priorityOf(ctx, cfg.optString("mac"));
+        boolean on = st.optBoolean("on");
+        long until = st.optLong("until");
+        String left = "";
+        if (on && until > 0) {
+            long m = Math.max(1, (until - System.currentTimeMillis()) / 60000);
+            left = m >= 60 ? (m / 60) + "h " + (m % 60) + "m" : m + " min";
+        }
+        v.setTextViewText(R.id.wl_name, cfg.optString("name", "Device"));
+        v.setTextViewText(R.id.wl_state, on ? (until > 0 ? left : "Priority") : "Off");
+        v.setImageViewResource(R.id.wl_badge, on ? R.drawable.wl_badge_amber : R.drawable.wl_badge_off);
+        v.setOnClickPendingIntent(R.id.wl_root, tap(ctx, "prio", String.valueOf(widgetId)));
+        return v;
     }
 
     /** The PC: green dot when on; Sleep, Lock, Shut down, or Turn on when off. Asks the PC again when the last answer is old. */

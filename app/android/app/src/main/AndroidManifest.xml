@@ -83,6 +83,14 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_pc_info" />
         </receiver>
 
+        <receiver android:name=".PriorityWidget" android:exported="true" android:label="Wi-Fi priority">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wl_prio_info" />
+        </receiver>
+        <activity android:name=".PriorityConfig" android:exported="true" android:theme="@style/AppTheme.NoActionBar" android:excludeFromRecents="true">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
+
         <!-- Quick Settings tiles -->
         <service android:name=".PcTile" android:exported="true" android:label="PC" android:icon="@drawable/wl_pc" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>

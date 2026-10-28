@@ -314,6 +314,7 @@ final class RouterControl {
         }
         saveTimers(ctx, keep);
         Widgets.redrawWifi(ctx);
+        Widgets.redrawPrio(ctx);
     }
 
     /** { timers: [...], pausedAll: { macs, at } | null, prio: { MAC: until } } */
@@ -337,6 +338,18 @@ final class RouterControl {
         prefs(ctx).edit().putString("prioOn", pr.toString()).apply();
         if (on && minutes > 0) addTimer(ctx, "prio:" + mac, "prio", System.currentTimeMillis() + minutes * 60_000L, java.util.Collections.singletonList(mac), name);
         else endTimerQuietly(ctx, "prio:" + mac);
+        Widgets.redrawPrio(ctx);
+    }
+
+    /** Priority for this device right now? { on, until (0 = until stopped) } */
+    static JSONObject priorityOf(Context ctx, String mac) {
+        try {
+            JSONObject pr = new JSONObject(prefs(ctx).getString("prioOn", "{}"));
+            String m = mac.toUpperCase(Locale.ROOT);
+            return new JSONObject().put("on", pr.has(m)).put("until", pr.optLong(m));
+        } catch (JSONException e) {
+            return new JSONObject();
+        }
     }
 
     /** Sets (level 0..4) or removes (-1) this device's rule; other rules stay as they were. */
