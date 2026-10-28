@@ -31,6 +31,10 @@ Any side can be hidden in Settings → Devices in the app. Logins and keys stay 
 - **Wi-Fi:** every device on the network, grouped and named where possible (LIFX, TV, screen, cameras, Apple, Cast, Tuya…); tap one to give it your own name. New device alert (notification, checked every ~15 min), Who's home (mark phones as people; this phone updates right away, others every ~15 min; run a scene when someone arrives or everyone leaves; with a LIFX cloud token the lights also work when you're away), speed test with history, guest Wi-Fi QR code. History tab: devices coming and going, internet outage log (checked every ~5 min at home). Pause a device's internet through the ASUS router (router sign-in; beta).
 - **Wi-Fi controls (ASUS router sign-in; beta):** Control tab with what's paused right now, profiles (a person's devices together), Focus time (pause for 30 min–2 h, back by itself), pause everyone except the devices you keep, Internet bedtime (kept by the router), device priority for a while (router QoS), guest Wi-Fi on for 1 h/2 h/a day/always (the router ends it), change the Wi-Fi password. Block button on the new device alert. Tools: router health (CPU, memory, temperature, uptime, firmware update check), restart now or weekly, data use per device (today, 7 days, live; the router's Traffic Analyzer), Wi-Fi signal per device with weak ones flagged. Lights react: a light blinks when the internet goes down or a new device joins. Wi-Fi widget: internet up/down, last speed test, who's home.
 
+## Your PC
+
+`pc-helper/` is a small helper for a Windows PC so House can shut it down, restart, sleep or lock it over the home network (and turn it on with Wake-on-LAN when wired). Install with `powershell -ExecutionPolicy Bypass -File pc-helperinstall.ps1` (needs Node.js); it starts at sign-in with no window. In House: Wi-Fi → tap the PC → Pair, and say Yes on the PC.
+
 ## Planned next
 
 

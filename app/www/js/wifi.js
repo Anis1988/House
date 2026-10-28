@@ -142,6 +142,11 @@
         else if (!fromRouter) add({ ...k, kind: k.type, online: !!k.online, side: s.id });
       }
       const own = names();
+      // Paired PCs (House PC helper) know their own name.
+      for (const pc of store.json("pc.list", [])) {
+        const hit = [...byKey.values()].find((x) => (x.mac && x.mac.toLowerCase() === pc.mac) || x.ip === pc.ip);
+        if (hit) { hit.name ||= pc.name; hit.kind ||= "laptop"; }
+      }
       devices = [...byKey.values()].map((d) => {
         const maker = d.maker || makerOf(d.mac);
         const text = `${d.name || ""} ${maker} ${d.hint || ""}`;
@@ -352,11 +357,13 @@
         ${side ? `<button class="ghost center" id="devOpen">Open ${esc(side.name)}</button>` : ""}
         ${router().pass && d.mac ? `<button class="ghost center ${paused.has(d.mac.toLowerCase()) ? "" : "danger"}" id="devPause">${paused.has(d.mac.toLowerCase()) ? "Resume internet" : "Pause internet"}</button>` : ""}
       </div>
+      <div id="devPc"></div>
       <div class="label" style="margin-top:18px">Who's home</div>
       ${personOf(d) ? `<p class="note" style="margin-top:0">This is ${esc(personOf(d).name)}'s phone.</p><div class="list"><button class="ghost center danger" id="devUnperson">Not a person's phone</button></div>`
         : `<label class="fld" style="margin-top:0">This is a person's phone: whose?<input class="field" id="devPerson" placeholder="Anis"></label>
           <div class="list"><button class="ghost center" id="devPersonSave">Use for Who's home</button></div>
           ${d.mac ? "" : `<p class="note">Without the router sign-in the phone is known by its address, which can change. Signing in to the router is more reliable.</p>`}`}`);
+    House.pc.sheet(d, body);
     const pkey = (d.mac || "").toLowerCase() || d.ip;
     body.querySelector("#devPersonSave")?.addEventListener("click", () => {
       const name = $("devPerson").value.trim();
@@ -397,6 +404,7 @@
       { id: "devices", label: "Devices", icon: "wifi", html: `
         <div class="card glass"><div class="head-card"><div class="grow"><b>Your Wi-Fi</b><div class="status-line" id="wfSub"></div></div><button class="round-btn glass" id="wfRefresh" aria-label="Look again">${svg("refresh")}</button></div></div>
         <div class="card glass" id="wfHome" hidden></div>
+        ${House.pc.foldHtml}
         ${House.wifiControl.controlHtml}
         <div class="sec-title">Tools</div>
         ${House.fold("wifi.speed", "Speed test", "refresh", `
@@ -475,6 +483,7 @@
       ["clock", "Focus time and pause everyone", "Devices → Focus time pauses someone's internet for 30 min to 2 h and brings it back by itself. Pause everyone pauses every device except the ones you keep on."],
       ["moon", "Internet bedtime", "Devices → Add a bedtime: internet off at night on the days you pick. The router keeps it, so it works with your phone away."],
       ["star", "Priority, password, block", "Devices → Device priority gives a device bandwidth first for a while (router QoS on). Change the Wi-Fi password in Settings → Wi-Fi password. A new device alert has a Block button."],
+      ["laptop", "Your PC", "Install the House PC helper on a Windows PC, then tap that PC in Devices → Pair (say Yes on the PC). Shut it down, restart, sleep or lock it from here, and turn it on over the network when it's wired."],
       ["router", "Router health and data use", "Devices → Router shows CPU, memory, temperature and updates, and restarts it now or weekly. Data use shows who used the most today or this week, or live."],
       ["bulb", "Lights react", "Settings → Lights react: a light blinks when the internet goes down or a new device joins."],
     ],
@@ -543,6 +552,7 @@
     list: () => devices,
     onShow(tab) {
       House.wifiControl.onShow(tab);
+      if (tab === "devices") House.pc.refresh();
       if (tab === "settings") { paintGuest(); loadLog(); }
       if (tab === "devices" && !busy && !devices.length) load(); else paint();
 
