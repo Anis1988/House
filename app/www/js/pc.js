@@ -69,14 +69,29 @@
     try {
       await Net.wake({ mac: pc.mac, broadcast: ipOf(pc).split(".").slice(0, 3).join(".") + ".255" });
       toast(`Waking ${pc.name}… give it a minute`);
-      setTimeout(refresh, 30000);
+      waking = Date.now();
+      paint();
     } catch { toast("Couldn't send the wake-up", true); }
   }
+
+  // While the tab is open: check every 10 s while waking or starting up, otherwise every 30 s.
+  let waking = 0, timer = 0;
+  function poll() {
+    clearTimeout(timer);
+    if (House.current !== "wifi" || House.tab !== "pc" || document.hidden || !pcs().length) return;
+    const st = state[lc(cur()?.mac)];
+    if (waking && (st?.online || Date.now() - waking > 3 * 60e3)) waking = 0;
+    timer = setTimeout(() => refresh().then(poll), waking || st?.starting ? 10000 : 30000);
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && House.current === "wifi" && House.tab === "pc") refresh().then(poll); });
 
   async function refresh() {
     await Promise.all(pcs().map(async (pc) => {
       try { const j = await call(ipOf(pc), "/status", { key: pc.key, ms: 2500 }); state[lc(pc.mac)] = { online: true, ...j }; }
-      catch (e) { state[lc(pc.mac)] = { online: false, unpaired: /paired/i.test(e.message) }; }
+      catch (e) {
+        const seen = (House.byId("wifi")?.list?.() || []).find((d) => lc(d.mac) === lc(pc.mac))?.online;
+        state[lc(pc.mac)] = { online: false, unpaired: /paired/i.test(e.message), starting: !!seen && !/paired/i.test(e.message) };
+      }
     }));
     paint();
     // Opened folds load their part.
@@ -104,7 +119,7 @@
     const st = state[lc(pc.mac)];
     const old = st?.online && (st.version || 1) < NEED;
     const opened = (k) => ({ open: document.querySelector(`details[data-fold="pc.${k}"]`)?.open ?? null });
-    const line = !st ? "Checking…" : st.online ? `On · running for ${upFor(st.uptime)}${st.user ? ` · ${esc(st.user)}` : ""}` : st.unpaired ? "Pair again: open it in Devices" : away() ? "Can't see it from away" : "Off or asleep";
+    const line = !st ? "Checking…" : st.online ? `On · running for ${upFor(st.uptime)}${st.user ? ` · ${esc(st.user)}` : ""}` : st.unpaired ? "Pair again: open it in Devices" : away() ? "Can't see it from away" : st.starting ? "Starting up, or waiting for someone to sign in" : waking ? "Waking up… checking every few seconds" : "Off or asleep";
     box.innerHTML = (list.length > 1 ? `<div class="chips" style="margin-bottom:12px">${list.map((p) => `<button data-pc-pick="${esc(p.mac)}" class="${p === pc ? "on" : ""}">${esc(p.name)}</button>`).join("")}</div>` : "")
       + `<div class="card glass"><div class="head-card"><span class="pc-dot ${st?.online ? "on" : ""}"></span><div class="grow"><b>${esc(pc.name)}</b><div class="status-line">${line}</div></div>
           <button class="round-btn glass" id="pcRefresh" aria-label="Check again">${svg("refresh")}</button></div>
@@ -319,6 +334,6 @@
 
   House.pc = {
     html, sheet,
-    onShow() { paint(); refresh(); loadWake(); },
+    onShow() { paint(); refresh().then(poll); loadWake(); },
   };
 })();
