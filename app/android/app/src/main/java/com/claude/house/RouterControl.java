@@ -328,10 +328,6 @@ final class RouterControl {
 
     static void priority(Context ctx, String mac, String name, boolean on, int minutes) throws Exception {
         mac = mac.toUpperCase(Locale.ROOT);
-        JSONObject q = Asus.nvram(ctx, "qos_enable");
-        if (!"1".equals(q.optString("qos_enable"))) {
-            throw new Exception("Turn on QoS in your router first (its web page → Adaptive QoS → QoS), then try again");
-        }
         setPriority(ctx, mac, on ? name : null, on ? 0 : -1);
         JSONObject pr = new JSONObject(prefs(ctx).getString("prioOn", "{}"));
         if (on) pr.put(mac, minutes > 0 ? System.currentTimeMillis() + minutes * 60_000L : 0); else pr.remove(mac);
@@ -352,9 +348,15 @@ final class RouterControl {
         }
     }
 
-    /** Sets (level 0..4) or removes (-1) this device's rule; other rules stay as they were. */
+    /**
+     * Sets (level 0..4) or removes (-1) this device's rule; other rules stay as they were.
+     * QoS slows the whole line (the router turns hardware acceleration off), so it's on only while
+     * a device has priority: if QoS was off, House turns it on with the first priority and off again
+     * when the last one ends. If QoS was already on, House leaves it on.
+     */
     private static void setPriority(Context ctx, String mac, String name, int level) throws Exception {
-        String list = Asus.nvram(ctx, "qos_rulelist").optString("qos_rulelist").replace("&#62", ">").replace("&#60", "<").replace("&gt;", ">").replace("&lt;", "<");
+        JSONObject nv = Asus.nvram(ctx, "qos_rulelist", "qos_enable", "qos_type");
+        String list = nv.optString("qos_rulelist").replace("&#62", ">").replace("&#60", "<").replace("&gt;", ">").replace("&lt;", "<");
         StringBuilder out = new StringBuilder();
         for (String rule : list.split("<")) {
             if (rule.isEmpty()) continue;
@@ -363,12 +365,27 @@ final class RouterControl {
             out.append('<').append(rule);
         }
         if (level >= 0) out.append('<').append((name == null || name.isEmpty() ? "Device" : name).replaceAll("[<>]", "")).append('>').append(mac).append(">>any>>").append(level);
-        Asus.apply(ctx, Asus.map("qos_rulelist", out.toString()), "restart_qos;restart_firewall");
-        if (level < 0) {
-            JSONObject pr = new JSONObject(prefs(ctx).getString("prioOn", "{}"));
-            pr.remove(mac);
-            prefs(ctx).edit().putString("prioOn", pr.toString()).apply();
+        Map<String, String> set = Asus.map("qos_rulelist", out.toString());
+        boolean qosOn = "1".equals(nv.optString("qos_enable"));
+        JSONObject pr = new JSONObject(prefs(ctx).getString("prioOn", "{}"));
+        pr.remove(mac);
+        boolean byHouse = prefs(ctx).getBoolean("qosByHouse", false);
+        if (level >= 0 && !qosOn) {
+            set.put("qos_enable", "1");
+            set.put("qos_type", "1"); // traditional QoS: the one that uses these device rules
+            prefs(ctx).edit().putBoolean("qosByHouse", true).putString("qosTypeWas", nv.optString("qos_type")).apply();
+        } else if (level >= 0 && !"1".equals(nv.optString("qos_type"))) {
+            set.put("qos_type", "1");
+        } else if (level < 0 && qosOn && byHouse && pr.length() == 0) {
+            set.put("qos_enable", "0");
+            String was = prefs(ctx).getString("qosTypeWas", "");
+            if (!was.isEmpty()) set.put("qos_type", was);
+            prefs(ctx).edit().remove("qosByHouse").remove("qosTypeWas").apply();
+        } else if (level < 0 && !qosOn) {
+            prefs(ctx).edit().remove("qosByHouse").remove("qosTypeWas").apply();
         }
+        Asus.apply(ctx, set, "restart_qos;restart_firewall");
+        if (level < 0) prefs(ctx).edit().putString("prioOn", pr.toString()).apply();
     }
 
     // ---- Guest Wi-Fi (the first guest network on each band; the router can end it by itself) ----

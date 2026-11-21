@@ -482,7 +482,7 @@
       ["phone", "Profiles", "Devices → Profiles → New profile: put a person's devices together. Pause, Focus time, bedtime and priority then work on all of them at once."],
       ["clock", "Focus time and pause everyone", "Devices → Focus time pauses someone's internet for 30 min to 2 h and brings it back by itself. Pause everyone pauses every device except the ones you keep on."],
       ["moon", "Internet bedtime", "Devices → Add a bedtime: internet off at night on the days you pick. The router keeps it, so it works with your phone away."],
-      ["star", "Priority, password, block", "Devices → Device priority gives a device bandwidth first for a while (router QoS on). Change the Wi-Fi password in Settings → Wi-Fi password. A new device alert has a Block button."],
+      ["star", "Priority, password, block", "Devices → Device priority gives a device bandwidth first for a while (House turns QoS on just for that time, which slows the whole house until it ends). Change the Wi-Fi password in Settings → Wi-Fi password. A new device alert has a Block button."],
       ["laptop", "Your PC", "Install the House PC helper on a Windows PC (pc-helper in the House repo), then PC tab → Find PCs → Pair, and say Yes on the PC. Power, volume, programs, a message, a screenshot, health, a nightly shutdown and turn on at a time."],
       ["router", "Router health and data use", "Devices → Router shows CPU, memory, temperature and updates, and restarts it now or weekly. Data use shows who used the most today or this week, or live."],
       ["bulb", "Lights react", "Settings → Lights react: a light blinks when the internet goes down or a new device joins."],

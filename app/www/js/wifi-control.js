@@ -69,7 +69,7 @@
         <label class="fld" style="margin-top:0">Who<select class="field" id="wcPrioWho"></select></label>
         <label class="fld">For<select class="field" id="wcPrioMin"><option value="60">1 h</option><option value="120" selected>2 h</option><option value="240">4 h</option><option value="0">Until I stop it</option></select></label>
         <div class="list"><button class="primary full" id="wcPrioGo">Give priority</button></div>
-        <p class="note">Gets bandwidth first, for a movie or a work call. Needs QoS on in the router.</p>`, { sub: "Bandwidth first for a while" })}
+        <p class="note">Gets bandwidth first, for a movie or a work call. House turns the router's QoS on only while a device has priority, so the whole house runs slower (about 150 Mbps) until it ends.</p>`, { sub: "Bandwidth first for a while" })}
     </div>`;
   // For Settings.
   const guestHtml = `<div id="wcGuest" data-wc><p class="note" style="margin:0">Sign in to your router to turn the guest network on and off.</p></div>`;
