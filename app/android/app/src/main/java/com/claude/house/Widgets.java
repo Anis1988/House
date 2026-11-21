@@ -119,8 +119,8 @@ final class Widgets {
                     boolean on = RouterControl.priorityOf(ctx, mac).optBoolean("on");
                     String msg;
                     try {
-                        RouterControl.priority(ctx, mac, name, !on, cfg.optInt("minutes"));
-                        int m = cfg.optInt("minutes");
+                        int m = 60; // always 1 hour, then it ends by itself
+                        RouterControl.priority(ctx, mac, name, !on, m);
                         msg = on ? name + ": priority off" : name + ": priority on" + (m > 0 ? " for " + (m >= 60 ? m / 60 + " h" : m + " min") : "");
                     } catch (Exception e) {
                         msg = e.getMessage() == null ? "The router didn't answer" : e.getMessage();
