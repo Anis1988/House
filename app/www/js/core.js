@@ -110,7 +110,7 @@ const mockRouter = (() => {
       case "health": return { model: "RT-AX88U", firmware: "3.0.0.4.388_24231", update: "", cpu: 7, mem: 41, cpuTemp: 62, uptime: 9 * 86400 + 4 * 3600 };
       case "rebootSchedule": return { on: !!a.on, days: a.days || "1000000", time: a.time || "0300" };
       case "usage": return { enabled: true, devices: [{ mac: "aa:bb:cc:00:00:01", down: 8.2e9, up: 4e8 }, { mac: "aa:bb:cc:00:00:02", down: 2.1e9, up: 1.2e8 }, { mac: "aa:bb:cc:00:00:03", down: 4.5e8, up: 3e7 }] };
-      case "live": return { at: Date.now(), devices: [{ mac: "aa:bb:cc:00:00:01", down: Date.now() * 2, up: Date.now() / 5 }] };
+      case "live": return { at: Date.now(), devices: [{ mac: "aa:bb:cc:00:00:01", down: Date.now() * 2, up: Date.now() / 5 }, { mac: "aa:bb:cc:00:00:02", down: Date.now() / 200, up: 0 }, { mac: "aa:bb:cc:00:00:03", down: 5, up: 1 }, { mac: "aa:bb:cc:00:00:04", down: Date.now() / 50, up: 9 }] };
       default: return {};
     }
   };

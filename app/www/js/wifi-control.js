@@ -53,6 +53,7 @@
     <div id="wcBody">
       <div id="wcAway"></div>
       <div class="card glass" id="wcNow"><p class="note" style="margin:0">Checking the router…</p></div>
+      ${F("cleanup", "Clean up", "chart", `<div id="wcClean"></div>`, { subId: "wcCleanSub", sub: "Heavy users, unknown and idle devices" })}
       ${F("pauseAll", "Pause everyone", "power", `
         <label class="fld" style="margin-top:0">For<select class="field" id="wcAllMin"><option value="0">Until I resume</option><option value="30">30 min</option><option value="60">1 h</option><option value="120">2 h</option></select></label>
         <div class="list"><button class="ghost center danger" id="wcAllGo">Pause everyone else</button></div>`, { subId: "wcAllSub" })}
@@ -115,6 +116,7 @@
       .map((d) => `<button data-keep="${esc(lc(d.mac))}" class="${keep.has(lc(d.mac)) ? "on" : ""}">${esc(d.label)}</button>`).join("") || `<p class="note" style="margin:0">Refresh the Devices tab first.</p>`;
     paintBeds();
     paintGuest();
+    paintClean();
     const k = keepList();
     $("wcAllSub").textContent = k.length ? `Keeps on: ${k.map(nameOf).join(", ")}` : "Keeps nothing on (choose in Settings)";
     const n = profiles().length;
@@ -337,6 +339,91 @@
     liveTimer = setTimeout(liveTick, 2500);
   }
 
+  /* ---- Clean up: measure every device for 2 minutes, then pick which to block ---- */
+  const CLEAN_S = 120;
+  let clean = null; // null | { until, start } | { rows, at } | { error }
+  let cleanPick = new Set(), cleanTimer = 0;
+  // A name the router made up, not one a person gave: worth a look.
+  const generic = (d) => !d.named && !d.side && (!d.name || /^(unknown|dhcpcd|android-|esp[_-]|espressif|ipc$|localhost|\*|[0-9a-f]{2}([:-][0-9a-f]{2}){5}$)/i.test(d.name.trim()));
+
+  async function startClean() {
+    try {
+      const first = await R("live");
+      clean = { until: Date.now() + CLEAN_S * 1000, start: first };
+      cleanPick = new Set();
+      paintClean();
+      const tick = async () => {
+        if (!clean?.until) return;
+        if (Date.now() < clean.until) { paintClean(); cleanTimer = setTimeout(tick, 1000); return; }
+        try { finishClean(clean.start, await R("live")); } catch (e) { clean = { error: e.message || "The router didn't answer" }; }
+        paintClean();
+      };
+      cleanTimer = setTimeout(tick, 1000);
+    } catch (e) { clean = { error: e.message || "The router didn't answer" }; paintClean(); }
+  }
+
+  function finishClean(a, b) {
+    const secs = Math.max(1, (b.at - a.at) / 1000);
+    const prev = Object.fromEntries(a.devices.map((d) => [lc(d.mac), d]));
+    const used = {};
+    let counted = false;
+    for (const d of b.devices) {
+      const p = prev[lc(d.mac)];
+      if (!p) continue;
+      const bytes = Math.max(0, d.down - p.down) + Math.max(0, d.up - p.up);
+      if (bytes > 0) counted = true;
+      used[lc(d.mac)] = { down: Math.max(0, d.down - p.down), up: Math.max(0, d.up - p.up) };
+    }
+    if (!counted) { clean = { error: "uncounted" }; return; }
+    const rows = devs().filter((d) => d.online && d.kind !== "router").map((d) => {
+      const u = used[lc(d.mac)];
+      const total = u ? u.down + u.up : null;
+      const mbps = u ? total * 8 / secs / 1e6 : null;
+      const heavy = mbps != null && mbps >= 1;
+      const idle = u != null && total < 50e3;
+      return { mac: lc(d.mac), label: d.label, rssi: d.rssi, band: d.band, total, mbps, heavy, idle, unknown: generic(d) };
+    });
+    rows.sort((x, y) => (y.mbps ?? -1) - (x.mbps ?? -1));
+    clean = { rows, at: Date.now() };
+  }
+
+  function paintClean() {
+    const box = $("wcClean");
+    if (!box) return;
+    const sub = $("wcCleanSub");
+    if (!clean) {
+      box.innerHTML = `<p class="note" style="margin-top:0">Watches every device's internet use for 2 minutes, then shows who uses the most, devices with no real name, and ones doing nothing. You pick which to block.</p><div class="list"><button class="primary full" id="wcCleanGo">Check my devices</button></div>`;
+      return;
+    }
+    if (clean.until) {
+      const s = Math.max(0, Math.ceil((clean.until - Date.now()) / 1000));
+      box.innerHTML = `<div class="set-row"><span class="dot on"></span><div class="set-text"><b>Measuring…</b><span>${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} left · keep House open</span></div><button class="ghost center auto" id="wcCleanStop">Stop</button></div>
+        <div class="use-bar" style="margin-top:8px"><i style="width:${(1 - s / CLEAN_S) * 100}%"></i></div>`;
+      if (sub) sub.textContent = "Measuring…";
+      return;
+    }
+    if (clean.error) {
+      box.innerHTML = clean.error === "uncounted"
+        ? `<p class="note" style="margin-top:0">Your router didn't count any traffic per device. Turn on its data tracking, then check again.</p><div class="list"><button class="primary full" id="wcUseOn">Turn on data tracking</button><button class="ghost center" id="wcCleanGo">Check again</button></div>`
+        : `<p class="note" style="margin-top:0">${esc(clean.error)}</p><div class="list"><button class="ghost center" id="wcCleanGo">Try again</button></div>`;
+      return;
+    }
+    const size = (b) => b == null ? "—" : bytes(b);
+    const row = (r) => `<button class="set-row as-btn" data-clpick="${esc(r.mac)}"><span class="tick ${cleanPick.has(r.mac) ? "on" : ""}">${cleanPick.has(r.mac) ? "✓" : ""}</span><div class="set-text"><b>${esc(r.label)}</b><span>${r.unknown ? "Unknown · " : ""}${size(r.total)} in 2 min${r.mbps != null ? ` · ${r.mbps.toFixed(r.mbps < 1 ? 2 : 1)} Mbps` : ""}${r.rssi ? ` · ${r.rssi} dBm` : r.band === "Wired" ? " · cable" : ""}</span></div></button>`;
+    const heavy = clean.rows.filter((r) => r.heavy);
+    const top = heavy.length ? heavy : clean.rows.filter((r) => r.total > 0).slice(0, 3);
+    const unknown = clean.rows.filter((r) => r.unknown && !top.includes(r));
+    const idle = clean.rows.filter((r) => r.idle && !r.unknown && !top.includes(r));
+    const group = (title, note, list) => list.length ? `<div class="label" style="margin-top:14px">${title}</div>${note ? `<p class="note" style="margin:2px 0 4px">${note}</p>` : ""}${list.map(row).join("")}` : "";
+    if (sub) sub.textContent = `${heavy.length} heavy · ${clean.rows.filter((r) => r.unknown).length} unknown · ${idle.length} idle`;
+    box.innerHTML = `<p class="note" style="margin-top:0">Checked at ${new Date(clean.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. Tap devices to pick them.</p>`
+      + group(heavy.length ? "Heavy users (1 Mbps or more)" : "Busiest (nothing heavy right now)", "", top)
+      + group("Unknown", "No real name: the router only knows a made-up one. Name the ones you know in the list below.", unknown)
+      + group("Idle", "Online but sent almost nothing. Smart bulbs, plugs and appliances are normally idle; blocking them can stop them working.", idle)
+      + `<div class="grid2" style="margin-top:14px;margin-bottom:0"><button class="ghost center danger" id="wcCleanBlock" ${cleanPick.size ? "" : "disabled"}>Block ${cleanPick.size || ""} selected</button><button class="ghost center" id="wcCleanGo">Check again</button></div>
+        <p class="note">Blocked devices lose internet (they stay on the Wi-Fi). Undo any time with Resume at the top.</p>`;
+  }
+
   /* ---- Events ---- */
   function mount() {
     document.addEventListener("click", async (e) => {
@@ -351,6 +438,7 @@
       if ((b = t.closest("[data-resumeall]"))) { buzz(); const r = await act(b, "…", () => R("resumeAll"), "Everyone's back online"); if (r) status = r; loadControl(); return; }
       if ((b = t.closest("[data-resume]"))) { buzz(); const r = await act(b, "…", () => R("block", { macs: [b.dataset.resume], on: false }), `${nameOf(b.dataset.resume)} back online`); if (r) filters = r; paintControl(); return; }
       if ((b = t.closest("[data-unbed]"))) { buzz(); const macs = b.dataset.unbed.split(","); const r = await act(b, "…", () => R("bedtime", { macs, on: false, days: 127, start: "2100", end: "0700" }), "Bedtime removed"); if (r) filters = r; paintControl(); return; }
+      if ((b = t.closest("[data-clpick]"))) { buzz(6); const m = b.dataset.clpick; cleanPick.has(m) ? cleanPick.delete(m) : cleanPick.add(m); paintClean(); return; }
       if ((b = t.closest("[data-gh]"))) { buzz(6); guestHours = +b.dataset.gh; paintGuest(); return; }
       if ((b = t.closest("[data-ud]"))) {
         buzz(6);
@@ -362,6 +450,16 @@
       }
       switch (t.closest("button")?.id) {
         case "wcNewProfile": buzz(6); openProfile(null); break;
+        case "wcCleanGo": buzz(); clearTimeout(cleanTimer); clean = null; startClean(); break;
+        case "wcCleanStop": buzz(6); clearTimeout(cleanTimer); clean = null; paintClean(); break;
+        case "wcCleanBlock": {
+          const macs = [...cleanPick];
+          if (!macs.length) break;
+          if (!confirm(`Block the internet for ${macs.map(nameOf).join(", ")}? You can resume them any time.`)) break;
+          const r = await act(t.closest("button"), "Blocking…", () => R("block", { macs, names: namesFor(macs), on: true }), `Blocked ${macs.length} device${macs.length === 1 ? "" : "s"}`);
+          if (r) { filters = r; cleanPick = new Set(); if (clean?.rows) clean.rows = clean.rows.filter((x) => !macs.includes(x.mac)); paintControl(); }
+          break;
+        }
         case "wcBedAdd": buzz(6); openBedtime(); break;
         case "wcFocusGo": {
           const { macs, label } = resolve($("wcFocusWho").value);

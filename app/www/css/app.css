@@ -538,3 +538,7 @@ nav button.on svg { color: var(--at); }
 .pc-media svg { width: 18px; height: 18px; }
 .pc-shot { display: block; width: 100%; border-radius: 12px; cursor: zoom-in; margin-bottom: 4px; }
 #pcMsg { resize: vertical; min-height: 64px; }
+
+/* Clean up: pick boxes */
+.tick { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--edge-hi); display: grid; place-items: center; font-size: 13px; font-weight: 800; color: #fff; }
+.tick.on { background: var(--good); border-color: transparent; }

@@ -151,7 +151,7 @@
         const maker = d.maker || makerOf(d.mac);
         const text = `${d.name || ""} ${maker} ${d.hint || ""}`;
         const [, kind, kindName] = d.kind ? [null, d.kind, KINDS.find((k) => k[1] === d.kind)?.[2] || "Device"] : kindOf(text);
-        return { ...d, maker, kind, kindName, label: own[(d.mac || "").toLowerCase()] || own[d.ip] || d.name || (maker && !maker.startsWith("Private") ? `${maker} device` : kindName === "Device" ? "Unknown device" : kindName) };
+        return { ...d, maker, kind, kindName, named: !!(own[(d.mac || "").toLowerCase()] || own[d.ip]), label: own[(d.mac || "").toLowerCase()] || own[d.ip] || d.name || (maker && !maker.startsWith("Private") ? `${maker} device` : kindName === "Device" ? "Unknown device" : kindName) };
       }).sort((a, b) => (b.online - a.online) || ipNum(a.ip) - ipNum(b.ip));
       store.setJson("wifi.last", devices);
       store.set("wifi.lastAt", String(Date.now()));
